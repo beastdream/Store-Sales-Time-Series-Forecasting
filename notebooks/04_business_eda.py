@@ -25,6 +25,10 @@ from src.config import DATA_PROCESSED, FIGURES_DIR, TABLES_DIR
 STORE_PERFORMANCE_PATH = TABLES_DIR / "store_performance.csv"
 FINDINGS_PATH = TABLES_DIR / "store_performance_findings.md"
 FIGURE_DIR = FIGURES_DIR / "business_eda" / "store_performance"
+FAMILY_PERFORMANCE_PATH = TABLES_DIR / "family_performance.csv"
+FAMILY_READINESS_PATH = TABLES_DIR / "family_forecast_readiness.csv"
+FAMILY_FINDINGS_PATH = TABLES_DIR / "family_performance_findings.md"
+FAMILY_FIGURE_DIR = FIGURES_DIR / "business_eda" / "family"
 GROWTH_WINDOW_DAYS = 90
 TOP_N = 10
 STORE_ATTRIBUTES = ["store_nbr", "city", "state", "store_type", "cluster"]
@@ -350,8 +354,302 @@ def create_findings(
     ]
 
 
+def load_family_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Load family-level inputs while retaining every zero-sales observation."""
+    sales = pd.read_parquet(
+        DATA_PROCESSED / "fact_daily_sales.parquet",
+        columns=[
+            "date_key",
+            "store_key",
+            "family_key",
+            "sales",
+            "is_promotion",
+        ],
+    )
+    families = pd.read_parquet(
+        DATA_PROCESSED / "dim_family.parquet",
+        columns=["family_key", "family"],
+    )
+    dates = pd.read_parquet(
+        DATA_PROCESSED / "dim_date.parquet",
+        columns=["date_key", "year", "month"],
+    )
+    return sales, families, dates
+
+
+def build_family_performance(
+    sales: pd.DataFrame,
+    families: pd.DataFrame,
+    dates: pd.DataFrame,
+) -> pd.DataFrame:
+    """Aggregate family metrics without filtering zero-sales rows."""
+    enriched = (
+        sales.assign(sales=sales["sales"].astype("float64"))
+        .merge(families, on="family_key", validate="many_to_one")
+        .merge(dates, on="date_key", validate="many_to_one")
+    )
+    if len(enriched) != len(sales):
+        raise AssertionError("Family enrichment changed the sales fact row count")
+
+    performance = (
+        enriched.groupby("family", as_index=False, observed=True)
+        .agg(
+            total_sales=("sales", "sum"),
+            average_sales=("sales", "mean"),
+            median_sales=("sales", "median"),
+            sales_std=("sales", "std"),
+            zero_sales_rate=("sales", lambda values: values.eq(0).mean()),
+            promotion_rate=("is_promotion", "mean"),
+        )
+    )
+    performance["coefficient_of_variation"] = safe_divide(
+        performance["sales_std"], performance["average_sales"]
+    )
+
+    active_stores = (
+        enriched.assign(has_positive_sales=enriched["sales"].gt(0))
+        .groupby(["family", "store_key"], as_index=False, observed=True)
+        .agg(has_positive_sales=("has_positive_sales", "max"))
+        .groupby("family", as_index=False, observed=True)
+        .agg(number_of_active_stores=("has_positive_sales", "sum"))
+    )
+    monthly = (
+        enriched.groupby(["family", "year", "month"], as_index=False, observed=True)
+        .agg(monthly_sales=("sales", "sum"))
+        .sort_values(["family", "year", "month"])
+    )
+    monthly["previous_month_sales"] = monthly.groupby(
+        "family", observed=True
+    )["monthly_sales"].shift()
+    monthly["month_over_month_growth"] = safe_divide(
+        monthly["monthly_sales"] - monthly["previous_month_sales"],
+        monthly["previous_month_sales"],
+    )
+    monthly_growth = (
+        monthly.groupby("family", as_index=False, observed=True)
+        .agg(monthly_growth=("month_over_month_growth", "median"))
+    )
+    performance = (
+        performance.merge(active_stores, on="family", validate="one_to_one")
+        .merge(monthly_growth, on="family", validate="one_to_one")
+        .sort_values("family")
+        .reset_index(drop=True)
+    )
+    performance["sales_contribution_rate"] = safe_divide(
+        performance["total_sales"],
+        pd.Series(performance["total_sales"].sum(), index=performance.index),
+    )
+    performance["rank_total_sales"] = performance["total_sales"].rank(
+        method="min", ascending=False
+    ).astype("int64")
+    performance["rank_volatility"] = performance[
+        "coefficient_of_variation"
+    ].rank(method="min", ascending=False, na_option="keep").astype("Int64")
+    performance["rank_zero_sales_rate"] = performance["zero_sales_rate"].rank(
+        method="min", ascending=False
+    ).astype("int64")
+    performance["rank_promotion_rate"] = performance["promotion_rate"].rank(
+        method="min", ascending=False
+    ).astype("int64")
+
+    performance = performance[
+        [
+            "family",
+            "total_sales",
+            "average_sales",
+            "median_sales",
+            "sales_std",
+            "coefficient_of_variation",
+            "zero_sales_rate",
+            "promotion_rate",
+            "number_of_active_stores",
+            "monthly_growth",
+            "sales_contribution_rate",
+            "rank_total_sales",
+            "rank_volatility",
+            "rank_zero_sales_rate",
+            "rank_promotion_rate",
+        ]
+    ]
+
+    if performance["family"].duplicated().any():
+        raise AssertionError("Family performance grain is not unique")
+    if len(performance) != len(families):
+        raise AssertionError("A family was lost from the performance table")
+    if not np.isclose(performance["total_sales"].sum(), sales["sales"].sum()):
+        raise AssertionError("Total sales changed during family aggregation")
+    return performance
+
+
+def build_family_readiness(
+    performance: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Assign mutually exclusive readiness segments using explicit thresholds."""
+    thresholds = {
+        "volume_threshold_median": float(performance["total_sales"].median()),
+        "volatility_threshold_median": float(
+            performance["coefficient_of_variation"].median()
+        ),
+        "intermittency_threshold_q75": float(
+            performance["zero_sales_rate"].quantile(0.75)
+        ),
+        "promotion_dependency_threshold_q75": float(
+            performance["promotion_rate"].quantile(0.75)
+        ),
+    }
+    high_volume = performance["total_sales"].ge(
+        thresholds["volume_threshold_median"]
+    )
+    volatile = performance["coefficient_of_variation"].gt(
+        thresholds["volatility_threshold_median"]
+    )
+    intermittent = performance["zero_sales_rate"].ge(
+        thresholds["intermittency_threshold_q75"]
+    )
+    promotion_dependent = performance["promotion_rate"].ge(
+        thresholds["promotion_dependency_threshold_q75"]
+    )
+    readiness = performance.copy()
+    readiness["forecast_readiness"] = np.select(
+        [
+            promotion_dependent,
+            high_volume & ~volatile,
+            high_volume & volatile,
+            ~high_volume & intermittent,
+        ],
+        [
+            "Promotion dependent",
+            "High volume – stable",
+            "High volume – volatile",
+            "Low volume – intermittent",
+        ],
+        default="Low volume – stable",
+    )
+    for name, value in thresholds.items():
+        readiness[name] = value
+    readiness["segmentation_rule"] = np.select(
+        [
+            promotion_dependent,
+            high_volume & ~volatile,
+            high_volume & volatile,
+            ~high_volume & intermittent,
+        ],
+        [
+            "promotion_rate >= Q75",
+            "total_sales >= median and CV <= median",
+            "total_sales >= median and CV > median",
+            "total_sales < median and zero_sales_rate >= Q75",
+        ],
+        default="total_sales < median and zero_sales_rate < Q75",
+    )
+    return readiness, thresholds
+
+
+def _plot_family_metric(
+    performance: pd.DataFrame,
+    metric: str,
+    title: str,
+    xlabel: str,
+    filename: str,
+    *,
+    top_n: int = 15,
+    percentage: bool = False,
+) -> None:
+    """Plot a readable horizontal ranking limited to the most relevant families."""
+    ranked = performance.nlargest(top_n, metric).sort_values(metric)
+    values = ranked[metric] * 100 if percentage else ranked[metric]
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.barh(ranked["family"], values, color="#2a9d8f")
+    ax.set(title=title, xlabel=xlabel, ylabel="")
+    ax.grid(axis="x", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(FAMILY_FIGURE_DIR / filename, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def create_family_figures(
+    performance: pd.DataFrame, readiness: pd.DataFrame
+) -> None:
+    """Create horizontal charts with at most 15 family labels per ranking."""
+    FAMILY_FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    _plot_family_metric(
+        performance,
+        "total_sales",
+        "Families contributing the most sales",
+        "Total sales",
+        "largest_sales_contributors.png",
+    )
+    _plot_family_metric(
+        performance,
+        "coefficient_of_variation",
+        "Families with highest normalized volatility",
+        "Coefficient of variation",
+        "highest_volatility.png",
+    )
+    _plot_family_metric(
+        performance,
+        "zero_sales_rate",
+        "Families with highest zero-sales rate",
+        "Zero-sales rate (%)",
+        "highest_zero_sales_rate.png",
+        percentage=True,
+    )
+    _plot_family_metric(
+        performance,
+        "promotion_rate",
+        "Families with highest promotion dependence signal",
+        "Promotion observation rate (%)",
+        "highest_promotion_rate.png",
+        percentage=True,
+    )
+    counts = readiness["forecast_readiness"].value_counts().sort_values()
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.barh(counts.index, counts.values, color="#457b9d")
+    ax.set(
+        title="Family forecast-readiness segments",
+        xlabel="Number of families",
+        ylabel="",
+    )
+    ax.grid(axis="x", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(
+        FAMILY_FIGURE_DIR / "forecast_readiness_segments.png",
+        dpi=160,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def create_family_findings(
+    performance: pd.DataFrame,
+    readiness: pd.DataFrame,
+    thresholds: dict[str, float],
+) -> list[str]:
+    """Generate five findings from the calculated family metrics."""
+    sales_leader = performance.loc[performance["total_sales"].idxmax()]
+    volatile = performance.loc[performance["coefficient_of_variation"].idxmax()]
+    intermittent = performance.loc[performance["zero_sales_rate"].idxmax()]
+    promotion = performance.loc[performance["promotion_rate"].idxmax()]
+    segment_counts = readiness["forecast_readiness"].value_counts().sort_index()
+    count_text = ", ".join(f"{name}: {count}" for name, count in segment_counts.items())
+    return [
+        f"{sales_leader.family} contributes the most sales at "
+        f"{sales_leader.total_sales:,.2f} "
+        f"({sales_leader.sales_contribution_rate:.1%} of all sales).",
+        f"{volatile.family} has the highest normalized volatility, with a "
+        f"coefficient of variation of {volatile.coefficient_of_variation:.3f}.",
+        f"{intermittent.family} has the highest zero-sales rate at "
+        f"{intermittent.zero_sales_rate:.1%}; zero-sales rows remain in all metrics.",
+        f"{promotion.family} has the highest promotion observation rate at "
+        f"{promotion.promotion_rate:.1%}.",
+        f"Readiness segment counts are {count_text}; thresholds are median total "
+        f"sales {thresholds['volume_threshold_median']:,.2f}, median CV "
+        f"{thresholds['volatility_threshold_median']:.3f}, zero-sales Q75 "
+        f"{thresholds['intermittency_threshold_q75']:.1%}, and promotion-rate Q75 "
+        f"{thresholds['promotion_dependency_threshold_q75']:.1%}.",
+    ]
 def main() -> None:
-    """Run the complete store-level business EDA and save its artifacts."""
+    """Run store- and family-level business EDA and save all artifacts."""
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     sales, transactions, stores, dates = load_inputs()
     performance, thresholds = build_store_performance(
@@ -376,6 +674,53 @@ def main() -> None:
         print(f"- {finding}")
     print(f"\nTable: {STORE_PERFORMANCE_PATH.relative_to(PROJECT_ROOT)}")
     print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+
+    family_sales, families, family_dates = load_family_inputs()
+    family_performance = build_family_performance(
+        family_sales, families, family_dates
+    )
+    family_readiness, family_thresholds = build_family_readiness(
+        family_performance
+    )
+    family_performance.to_csv(FAMILY_PERFORMANCE_PATH, index=False)
+    family_readiness.to_csv(FAMILY_READINESS_PATH, index=False)
+    create_family_figures(family_performance, family_readiness)
+    family_findings = create_family_findings(
+        family_performance, family_readiness, family_thresholds
+    )
+    FAMILY_FINDINGS_PATH.write_text(
+        "# Family Performance and Forecast Readiness\n\n"
+        "Monthly growth is the median of valid month-over-month changes; a "
+        "transition whose prior month has zero sales is retained in the source "
+        "but excluded from division.\n\n"
+        "## Segmentation rules\n\n"
+        "Rules are applied in priority order so every family receives exactly "
+        "one segment:\n\n"
+        "1. **Promotion dependent:** promotion rate is at or above Q75.\n"
+        "2. **High volume – stable:** total sales is at or above the median and "
+        "CV is at or below the median.\n"
+        "3. **High volume – volatile:** total sales is at or above the median and "
+        "CV is above the median.\n"
+        "4. **Low volume – intermittent:** total sales is below the median and "
+        "zero-sales rate is at or above Q75.\n"
+        "5. **Low volume – stable:** remaining low-volume families.\n\n"
+        f"Thresholds: total-sales median = "
+        f"{family_thresholds['volume_threshold_median']:.6f}; CV median = "
+        f"{family_thresholds['volatility_threshold_median']:.6f}; zero-sales "
+        f"Q75 = {family_thresholds['intermittency_threshold_q75']:.6f}; "
+        f"promotion-rate Q75 = "
+        f"{family_thresholds['promotion_dependency_threshold_q75']:.6f}.\n\n"
+        "## Findings\n\n"
+        + "\n".join(f"- {finding}" for finding in family_findings)
+        + "\n",
+        encoding="utf-8",
+    )
+    print("\nFamily findings")
+    for finding in family_findings:
+        print(f"- {finding}")
+    print(f"\nTable: {FAMILY_PERFORMANCE_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Readiness: {FAMILY_READINESS_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Figures: {FAMILY_FIGURE_DIR.relative_to(PROJECT_ROOT)}")
 
 
 if __name__ == "__main__":

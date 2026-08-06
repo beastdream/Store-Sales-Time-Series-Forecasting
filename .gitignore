@@ -13,4 +13,9 @@ models/*
 
 !**/.gitkeep
 
-data/raw/train.csv
+data/raw/*.csv
+
+# Large reproducible report tables
+reports/tables/holiday_analysis.csv
+reports/tables/promotion_analysis_matched.csv
+reports/tables/transactions_analysis.csv

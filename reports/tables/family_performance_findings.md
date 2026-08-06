@@ -16,7 +16,7 @@ Thresholds: total-sales median = 1962767.000000; CV median = 1.439613; zero-sale
 
 ## Findings
 
-- GROCERY I contributes the most sales at 343,462,734.87 (32.0% of all sales).
+- GROCERY I contributes the most sales at 343,462,734.89 (32.0% of all sales).
 - BOOKS has the highest normalized volatility, with a coefficient of variation of 7.740.
 - BOOKS has the highest zero-sales rate at 97.0%; zero-sales rows remain in all metrics.
 - GROCERY I has the highest promotion observation rate at 62.6%.

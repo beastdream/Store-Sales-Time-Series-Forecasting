@@ -2,8 +2,9 @@
 # # Business EDA: Store Performance
 #
 # This analysis compares stores on scale, growth, volatility, and transaction
-# efficiency. Growth compares the average daily sales in each store's first and
-# last 90 observed days.
+# efficiency. Recent growth uses adjacent calendar windows anchored to the
+# latest observed sales date. The legacy first-versus-last metric is retained
+# explicitly as a proxy.
 
 # %%
 from pathlib import Path
@@ -63,7 +64,7 @@ def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFram
 
 
 def _calculate_growth(daily_sales: pd.DataFrame) -> pd.DataFrame:
-    """Compare first and last fixed observation windows for every store."""
+    """Calculate legacy and recent store growth without imputing missing dates."""
     ordered = daily_sales.sort_values(["store_key", "full_date"])
     first_window = (
         ordered.groupby("store_key", sort=False, observed=True)
@@ -80,11 +81,64 @@ def _calculate_growth(daily_sales: pd.DataFrame) -> pd.DataFrame:
         .rename("last_window_average_daily_sales")
     )
     growth = pd.concat([first_window, last_window], axis=1).reset_index()
-    growth["growth_rate"] = safe_divide(
+    growth["first_vs_last_90d_growth_proxy"] = safe_divide(
         growth["last_window_average_daily_sales"]
         - growth["first_window_average_daily_sales"],
         growth["first_window_average_daily_sales"],
     )
+
+    latest_date = ordered["full_date"].max()
+    recent_start = latest_date - pd.Timedelta(days=GROWTH_WINDOW_DAYS - 1)
+    previous_end = recent_start - pd.Timedelta(days=1)
+    previous_start = previous_end - pd.Timedelta(days=GROWTH_WINDOW_DAYS - 1)
+    yoy_start = recent_start - pd.DateOffset(years=1)
+    yoy_end = latest_date - pd.DateOffset(years=1)
+
+    def aggregate_window(start: pd.Timestamp, end: pd.Timestamp, prefix: str) -> pd.DataFrame:
+        observed = ordered.loc[ordered["full_date"].between(start, end)]
+        return (
+            observed.groupby("store_key", as_index=False, observed=True)
+            .agg(
+                **{
+                    f"{prefix}_sales": ("daily_sales", "sum"),
+                    f"{prefix}_observed_days": ("full_date", "nunique"),
+                }
+            )
+        )
+
+    for window in [
+        aggregate_window(recent_start, latest_date, "recent_90d"),
+        aggregate_window(previous_start, previous_end, "previous_90d"),
+        aggregate_window(yoy_start, yoy_end, "yoy_90d"),
+    ]:
+        growth = growth.merge(window, on="store_key", how="left", validate="one_to_one")
+
+    count_columns = [
+        "recent_90d_observed_days",
+        "previous_90d_observed_days",
+        "yoy_90d_observed_days",
+    ]
+    growth[count_columns] = growth[count_columns].fillna(0).astype("int64")
+    growth["recent_90d_growth"] = safe_divide(
+        growth["recent_90d_sales"] - growth["previous_90d_sales"],
+        growth["previous_90d_sales"],
+    ).where(growth["previous_90d_observed_days"].gt(0))
+    growth["has_yoy_comparison"] = growth["yoy_90d_observed_days"].gt(0).astype("uint8")
+    growth["recent_90d_yoy_growth"] = safe_divide(
+        growth["recent_90d_sales"] - growth["yoy_90d_sales"],
+        growth["yoy_90d_sales"],
+    ).where(growth["has_yoy_comparison"].eq(1))
+
+    window_dates = {
+        "recent_90d_start_date": recent_start,
+        "recent_90d_end_date": latest_date,
+        "previous_90d_start_date": previous_start,
+        "previous_90d_end_date": previous_end,
+        "yoy_90d_start_date": yoy_start,
+        "yoy_90d_end_date": yoy_end,
+    }
+    for column, value in window_dates.items():
+        growth[column] = value
     return growth
 
 
@@ -162,7 +216,7 @@ def build_store_performance(
 
     ranking_metrics = {
         "average_daily_sales": "rank_average_daily_sales",
-        "growth_rate": "rank_growth_rate",
+        "recent_90d_growth": "rank_recent_90d_growth",
         "coefficient_of_variation": "rank_volatility",
         "sales_volume_per_transaction": "rank_sales_volume_per_transaction",
     }
@@ -180,9 +234,24 @@ def build_store_performance(
         "active_days",
         "total_transactions",
         "sales_volume_per_transaction",
-        "growth_rate",
+        "first_vs_last_90d_growth_proxy",
         "first_window_average_daily_sales",
         "last_window_average_daily_sales",
+        "recent_90d_growth",
+        "recent_90d_yoy_growth",
+        "has_yoy_comparison",
+        "recent_90d_sales",
+        "previous_90d_sales",
+        "yoy_90d_sales",
+        "recent_90d_observed_days",
+        "previous_90d_observed_days",
+        "yoy_90d_observed_days",
+        "recent_90d_start_date",
+        "recent_90d_end_date",
+        "previous_90d_start_date",
+        "previous_90d_end_date",
+        "yoy_90d_start_date",
+        "yoy_90d_end_date",
         "sales_threshold_median",
         "volatility_threshold_median",
         "performance_segment",
@@ -247,10 +316,10 @@ def create_figures(performance: pd.DataFrame, thresholds: dict[str, float]) -> N
     )
     _plot_ranking(
         performance,
-        "growth_rate",
-        f"Top and bottom stores: {GROWTH_WINDOW_DAYS}-day window growth",
+        "recent_90d_growth",
+        f"Top and bottom stores: recent {GROWTH_WINDOW_DAYS}-day growth",
         "Growth rate (%)",
-        "growth_rate_top_bottom.png",
+        "recent_90d_growth_top_bottom.png",
         percentage=True,
     )
     _plot_ranking(
@@ -327,25 +396,26 @@ def create_findings(
 ) -> list[str]:
     """Create five reproducible findings directly from computed metrics."""
     avg_leader = performance.loc[performance["average_daily_sales"].idxmax()]
-    growth_leader = performance.loc[performance["growth_rate"].idxmax()]
-    growth_laggard = performance.loc[performance["growth_rate"].idxmin()]
+    growth_leader = performance.loc[performance["recent_90d_growth"].idxmax()]
+    growth_laggard = performance.loc[performance["recent_90d_growth"].idxmin()]
     volatility_leader = performance.loc[
         performance["coefficient_of_variation"].idxmax()
     ]
     transaction_leader = performance.loc[
         performance["sales_volume_per_transaction"].idxmax()
     ]
-    undefined_growth_count = int(performance["growth_rate"].isna().sum())
+    undefined_growth_count = int(performance["recent_90d_growth"].isna().sum())
     segment_counts = performance["performance_segment"].value_counts().sort_index()
     counts_text = ", ".join(f"{name}: {count}" for name, count in segment_counts.items())
     return [
         f"Store {int(avg_leader.store_nbr)} has the highest average daily sales "
         f"at {avg_leader.average_daily_sales:,.2f}.",
         f"Store {int(growth_leader.store_nbr)} has the strongest growth "
-        f"({growth_leader.growth_rate:.1%}), while store "
+        f"({growth_leader.recent_90d_growth:.1%}), while store "
         f"{int(growth_laggard.store_nbr)} has the weakest "
-        f"({growth_laggard.growth_rate:.1%}), comparing the first and last "
-        f"{GROWTH_WINDOW_DAYS} observed days; {undefined_growth_count} stores "
+        f"({growth_laggard.recent_90d_growth:.1%}), comparing the latest "
+        f"{GROWTH_WINDOW_DAYS} calendar days with the immediately preceding "
+        f"window; {undefined_growth_count} stores "
         f"with a zero baseline are left unranked.",
         f"Store {int(volatility_leader.store_nbr)} is the most volatile after "
         f"normalizing for scale, with a coefficient of variation of "
@@ -670,7 +740,15 @@ def main() -> None:
     findings = create_findings(performance, thresholds)
     FINDINGS_PATH.write_text(
         "# Store Performance Findings\n\n"
-        f"Growth window: first versus last {GROWTH_WINDOW_DAYS} observed store-days.\n\n"
+        f"Legacy proxy: first versus last {GROWTH_WINDOW_DAYS} observed store-days; "
+        "reported as `first_vs_last_90d_growth_proxy`, not recent growth.\n\n"
+        f"Recent window: {performance['recent_90d_start_date'].iloc[0]:%Y-%m-%d} "
+        f"through {performance['recent_90d_end_date'].iloc[0]:%Y-%m-%d}; previous "
+        f"window: {performance['previous_90d_start_date'].iloc[0]:%Y-%m-%d} through "
+        f"{performance['previous_90d_end_date'].iloc[0]:%Y-%m-%d}; YoY window: "
+        f"{performance['yoy_90d_start_date'].iloc[0]:%Y-%m-%d} through "
+        f"{performance['yoy_90d_end_date'].iloc[0]:%Y-%m-%d}. Only observed "
+        "store-days are summed; missing observations are not filled with zero.\n\n"
         f"Segmentation thresholds: median average daily sales = "
         f"{thresholds['sales_threshold_median']:.6f}; median coefficient of "
         f"variation = {thresholds['volatility_threshold_median']:.6f}.\n\n"

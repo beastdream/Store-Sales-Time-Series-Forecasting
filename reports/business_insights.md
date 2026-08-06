@@ -155,8 +155,9 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 - **Finding:** Store 44 tại Quito có average daily sales `36.869,09`, cao nhất;
   tiếp theo là store 45 (`32.362,24`), store 47 (`30.254,34`) và store 3
   (`29.977,38`).
-- **Evidence:** `store_performance.csv`; store 44 có CV `0,399`, growth proxy
-  `106,7%` và sales volume per transaction `8,54`.
+- **Evidence:** `store_performance.csv`; store 44 có CV `0,399`,
+  `first_vs_last_90d_growth_proxy = 106,7%`, `recent_90d_growth = -1,5%`,
+  `recent_90d_yoy_growth = 10,1%` và sales volume per transaction `8,54`.
 - **Business implication:** Store lớn cần được theo dõi bằng absolute error và bias,
   vì sai số phần trăm nhỏ vẫn có thể tạo chênh lệch sales volume lớn.
 - **Recommended action:** Tạo dashboard forecast bias cho top-volume stores và
@@ -178,6 +179,22 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
   dùng forecast cho vận hành.
 - **Limitation:** Anomaly flag không phải lỗi dữ liệu; scale thấp có thể phản ánh
   store maturity hoặc assortment chưa có trong dataset.
+
+### Insight 5.3 — Recent growth khác rõ với proxy đầu–cuối lịch sử
+
+- **Finding:** Trong cửa sổ gần nhất `2017-05-18`–`2017-08-15`, store 52 tăng
+  `192,7%` so với cửa sổ liền trước `2017-02-17`–`2017-05-17`; tiếp theo là
+  store 30 (`28,7%`) và store 54 (`22,6%`). Store 25 giảm mạnh nhất (`-25,4%`).
+- **Evidence:** `store_performance.csv`; ranking dùng `recent_90d_growth`. Cửa sổ
+  YoY là `2016-05-18`–`2016-08-15`; store 52 có observation lịch sử nhưng sales
+  nền bằng zero nên `recent_90d_yoy_growth` là `NaN`, dù `has_yoy_comparison = 1`.
+- **Business implication:** Proxy 90 ngày đầu–cuối phản ánh thay đổi dài hạn và
+  không đại diện cho momentum gần đây; hai metric không nên dùng thay thế nhau.
+- **Recommended action:** Dùng `recent_90d_growth` cho phân hạng momentum và giữ
+  `first_vs_last_90d_growth_proxy` chỉ như chỉ báo bối cảnh dài hạn. Khi đọc YoY,
+  kiểm tra cả `has_yoy_comparison` và mẫu số sales.
+- **Limitation:** Các tổng chỉ cộng ngày có observation, không điền ngày thiếu bằng
+  zero; tăng trưởng có thể chịu ảnh hưởng bởi promotion, holiday hoặc store regime.
 
 ## 6. Product family performance
 

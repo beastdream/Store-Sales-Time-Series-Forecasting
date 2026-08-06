@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import DATA_INTERIM, DATA_PROCESSED, REPORTS_DIR, ensure_project_directories
+from src.config import DATA_INTERIM, DATA_PROCESSED, REPORTS_DIR
 from src.data.build_bridges import build_bridge_store_holiday
 from src.data.build_date_dimension import build_date_dimension
 from src.data.build_dimensions import build_dim_family, build_dim_store
@@ -168,7 +168,6 @@ def _build_report(
 
 def run_warehouse_build() -> None:
     """Build, validate, reconcile, and persist the processed warehouse."""
-    ensure_project_directories()
     interim = _load_interim_tables()
     start_date = interim["train"]["date"].min()
     end_date = interim["test"]["date"].max()
@@ -249,6 +248,7 @@ def run_warehouse_build() -> None:
         )
 
     # No warehouse output is written before all validations above have passed.
+    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     for name, table in warehouse.items():
         table.to_parquet(WAREHOUSE_PATHS[name], index=False)
 

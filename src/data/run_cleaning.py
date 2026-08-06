@@ -6,19 +6,9 @@ import pandas as pd
 
 from src.config import (
     DATA_INTERIM,
-    DATA_PROCESSED,
     REPORTS_DIR,
-    ensure_project_directories,
 )
 from src.data.audit import check_foreign_key, summarize_grain
-from src.data.build_bridges import build_bridge_store_holiday
-from src.data.build_date_dimension import build_date_dimension
-from src.data.build_dimensions import build_dim_family, build_dim_store
-from src.data.build_facts import (
-    build_fact_daily_sales,
-    build_fact_oil_price,
-    build_fact_store_transactions,
-)
 from src.data.clean_core import clean_stores, clean_test, clean_train
 from src.data.clean_holidays import clean_holidays
 from src.data.clean_oil import clean_oil
@@ -34,14 +24,6 @@ OUTPUT_PATHS = {
     "oil": DATA_INTERIM / "oil_clean.parquet",
     "holidays": DATA_INTERIM / "holiday_store_daily.parquet",
 }
-
-DIM_DATE_PATH = DATA_PROCESSED / "dim_date.parquet"
-DIM_STORE_PATH = DATA_PROCESSED / "dim_store.parquet"
-DIM_FAMILY_PATH = DATA_PROCESSED / "dim_family.parquet"
-FACT_DAILY_SALES_PATH = DATA_PROCESSED / "fact_daily_sales.parquet"
-FACT_STORE_TRANSACTIONS_PATH = DATA_PROCESSED / "fact_store_transactions.parquet"
-FACT_OIL_PRICE_PATH = DATA_PROCESSED / "fact_oil_price.parquet"
-BRIDGE_STORE_HOLIDAY_PATH = DATA_PROCESSED / "bridge_store_holiday.parquet"
 
 GRAIN_SPECS = {
     "train": ["date", "store_nbr", "family"],
@@ -153,7 +135,6 @@ def _build_summary(
 
 def run_cleaning() -> None:
     """Load, clean, validate, and persist all core interim data tables."""
-    ensure_project_directories()
     raw_tables = load_all_raw_tables()
 
     train_clean = clean_train(raw_tables["train"])
@@ -168,26 +149,6 @@ def run_cleaning() -> None:
 
     oil_clean = clean_oil(raw_tables["oil"], start_date, end_date)
     holiday_store_daily = clean_holidays(raw_tables["holidays"], stores_clean)
-    dim_date = build_date_dimension(start_date, end_date)
-    dim_store = build_dim_store(stores_clean)
-    dim_family = build_dim_family(train_clean)
-    fact_daily_sales = build_fact_daily_sales(
-        train_clean,
-        dim_date,
-        dim_store,
-        dim_family,
-    )
-    fact_store_transactions = build_fact_store_transactions(
-        transactions_clean,
-        dim_date,
-        dim_store,
-    )
-    fact_oil_price = build_fact_oil_price(oil_clean, dim_date)
-    bridge_store_holiday = build_bridge_store_holiday(
-        holiday_store_daily,
-        dim_date,
-        dim_store,
-    )
     clean_tables = {
         "train": train_clean,
         "test": test_clean,
@@ -230,35 +191,11 @@ def run_cleaning() -> None:
         )
     if oil_clean["oil_price"].isna().any():
         raise RuntimeError("Cleaning stopped: oil_price still contains missing values")
-    expected_dates = pd.date_range(start_date, end_date, freq="D")
-    if not dim_date["full_date"].equals(pd.Series(expected_dates, name="full_date")):
-        raise RuntimeError("Cleaning stopped: date dimension calendar is not continuous")
-    if len(dim_store) != len(stores_clean) or not dim_store["store_nbr"].is_unique:
-        raise RuntimeError("Cleaning stopped: store dimension validation failed")
-    if (
-        len(dim_family) != train_clean["family"].nunique()
-        or not dim_family["family"].is_unique
-    ):
-        raise RuntimeError("Cleaning stopped: family dimension validation failed")
-    if len(fact_daily_sales) != len(train_clean):
-        raise RuntimeError("Cleaning stopped: daily sales fact row count failed")
-    if len(fact_store_transactions) != len(transactions_clean):
-        raise RuntimeError("Cleaning stopped: store transactions fact row count failed")
-    if len(fact_oil_price) != len(dim_date):
-        raise RuntimeError("Cleaning stopped: oil price fact row count failed")
-    if bridge_store_holiday.duplicated(["date_key", "store_key"]).any():
-        raise RuntimeError("Cleaning stopped: store holiday bridge grain failed")
 
     # Persistence starts only after every critical validation above has passed.
+    DATA_INTERIM.mkdir(parents=True, exist_ok=True)
     for name, output_path in OUTPUT_PATHS.items():
         clean_tables[name].to_parquet(output_path, index=False)
-    dim_date.to_parquet(DIM_DATE_PATH, index=False)
-    dim_store.to_parquet(DIM_STORE_PATH, index=False)
-    dim_family.to_parquet(DIM_FAMILY_PATH, index=False)
-    fact_daily_sales.to_parquet(FACT_DAILY_SALES_PATH, index=False)
-    fact_store_transactions.to_parquet(FACT_STORE_TRANSACTIONS_PATH, index=False)
-    fact_oil_price.to_parquet(FACT_OIL_PRICE_PATH, index=False)
-    bridge_store_holiday.to_parquet(BRIDGE_STORE_HOLIDAY_PATH, index=False)
 
     summary = _build_summary(
         raw_tables,
@@ -271,17 +208,7 @@ def run_cleaning() -> None:
     summary_path.write_text(summary, encoding="utf-8")
 
     print("Cleaning pipeline completed successfully.")
-    for path in (
-        *OUTPUT_PATHS.values(),
-        DIM_DATE_PATH,
-        DIM_STORE_PATH,
-        DIM_FAMILY_PATH,
-        FACT_DAILY_SALES_PATH,
-        FACT_STORE_TRANSACTIONS_PATH,
-        FACT_OIL_PRICE_PATH,
-        BRIDGE_STORE_HOLIDAY_PATH,
-        summary_path,
-    ):
+    for path in (*OUTPUT_PATHS.values(), summary_path):
         print(path)
 
 

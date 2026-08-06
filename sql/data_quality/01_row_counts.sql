@@ -15,6 +15,10 @@ SELECT 'dim_family_row_count', 'FAIL', COUNT(*)::TEXT, '> 0', COUNT(*) > 0,
        'analytics.dim_family row count'
 FROM analytics.dim_family
 UNION ALL
+SELECT 'dim_store_date_row_count', 'FAIL', COUNT(*)::TEXT, '> 0', COUNT(*) > 0,
+       'analytics.dim_store_date row count'
+FROM analytics.dim_store_date
+UNION ALL
 SELECT 'fact_daily_sales_row_count', 'FAIL', COUNT(*)::TEXT, '> 0', COUNT(*) > 0,
        'analytics.fact_daily_sales row count'
 FROM analytics.fact_daily_sales

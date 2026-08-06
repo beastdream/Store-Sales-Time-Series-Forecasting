@@ -132,3 +132,9 @@ def test_load_all_raw_tables_returns_expected_mapping(sample_raw_dir: Path) -> N
         "sample_submission",
     ]
     assert all(isinstance(table, pd.DataFrame) for table in tables.values())
+
+
+def test_sales_columns_use_float64(sample_raw_dir: Path) -> None:
+    """Observed and submission sales columns avoid float32 precision loss."""
+    assert load_raw.load_train()["sales"].dtype == "float64"
+    assert load_raw.load_sample_submission()["sales"].dtype == "float64"

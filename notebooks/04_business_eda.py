@@ -192,7 +192,12 @@ def build_store_performance(
 
     if performance["store_nbr"].duplicated().any():
         raise AssertionError("Store performance grain is not unique")
-    if not np.isclose(performance["total_sales"].sum(), sales["sales"].sum()):
+    if not np.isclose(
+        performance["total_sales"].sum(),
+        sales["sales"].sum(),
+        rtol=0,
+        atol=1e-6,
+    ):
         raise AssertionError("Total sales changed during store aggregation")
     if performance["total_transactions"].sum() != transactions["transactions"].sum():
         raise AssertionError("Transactions changed during store aggregation")
@@ -476,7 +481,12 @@ def build_family_performance(
         raise AssertionError("Family performance grain is not unique")
     if len(performance) != len(families):
         raise AssertionError("A family was lost from the performance table")
-    if not np.isclose(performance["total_sales"].sum(), sales["sales"].sum()):
+    if not np.isclose(
+        performance["total_sales"].sum(),
+        sales["sales"].sum(),
+        rtol=0,
+        atol=1e-6,
+    ):
         raise AssertionError("Total sales changed during family aggregation")
     return performance
 

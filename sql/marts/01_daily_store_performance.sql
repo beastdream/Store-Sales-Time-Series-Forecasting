@@ -5,9 +5,9 @@ WITH sales_by_store_day AS (
         store_key,
         SUM(sales) AS total_sales,
         SUM(CASE WHEN is_promotion = 1 THEN sales ELSE 0::NUMERIC END)
-            AS promoted_sales,
+            AS sales_on_promotion_active_rows,
         SUM(CASE WHEN is_promotion = 0 THEN sales ELSE 0::NUMERIC END)
-            AS non_promoted_sales,
+            AS sales_on_nonpromotion_rows,
         SUM(onpromotion) AS promoted_item_count
     FROM analytics.fact_daily_sales
     GROUP BY date_key, store_key
@@ -21,11 +21,11 @@ SELECT
     store_dim.store_type,
     store_dim.cluster,
     sales.total_sales,
-    sales.promoted_sales,
-    sales.non_promoted_sales,
+    sales.sales_on_promotion_active_rows,
+    sales.sales_on_nonpromotion_rows,
     sales.promoted_item_count,
-    sales.promoted_sales / NULLIF(sales.total_sales, 0)
-        AS promotion_sales_share,
+    sales.sales_on_promotion_active_rows / NULLIF(sales.total_sales, 0)
+        AS promotion_active_sales_share_proxy,
     transactions.transactions,
     sales.total_sales / NULLIF(transactions.transactions, 0)
         AS sales_volume_per_transaction
@@ -39,7 +39,16 @@ LEFT JOIN analytics.fact_store_transactions AS transactions
    AND transactions.store_key = sales.store_key;
 
 COMMENT ON VIEW mart.daily_store_performance IS
-    'Grain: one row per full_date and store_nbr. Sales is aggregated before transactions are joined.';
+    'Grain: one row per full_date and store_nbr. Sales is aggregated before transactions are joined. Promotion metrics are descriptive associations and do not establish causal effects.';
+
+COMMENT ON COLUMN mart.daily_store_performance.sales_on_promotion_active_rows IS
+    'Sales volume on promotion-active observations.';
+
+COMMENT ON COLUMN mart.daily_store_performance.sales_on_nonpromotion_rows IS
+    'Sales volume on observations where promotion is not active.';
+
+COMMENT ON COLUMN mart.daily_store_performance.promotion_active_sales_share_proxy IS
+    'Promotion-active sales share proxy. This descriptive metric does not establish causal effects.';
 
 WITH fact_totals AS (
     SELECT

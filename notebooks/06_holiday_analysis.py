@@ -100,7 +100,12 @@ def load_daily_store_analysis() -> pd.DataFrame:
     )
     if len(enriched) != len(dates) * len(stores):
         raise AssertionError("Calendar-store analysis grid is incomplete")
-    if not np.isclose(enriched["actual_sales"].sum(), sales["sales"].sum()):
+    if not np.isclose(
+        enriched["actual_sales"].sum(),
+        sales["sales"].sum(),
+        rtol=0,
+        atol=1e-6,
+    ):
         raise AssertionError("Holiday join multiplied or lost sales")
 
     mapped = enriched["holiday_mapping_status"].eq("both")

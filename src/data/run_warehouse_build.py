@@ -14,6 +14,7 @@ from src.data.build_facts import (
     build_fact_oil_price,
     build_fact_store_transactions,
 )
+from src.data.build_store_date_dimension import build_dim_store_date
 
 
 INTERIM_PATHS = {
@@ -29,6 +30,7 @@ WAREHOUSE_PATHS = {
     "dim_date": DATA_PROCESSED / "dim_date.parquet",
     "dim_store": DATA_PROCESSED / "dim_store.parquet",
     "dim_family": DATA_PROCESSED / "dim_family.parquet",
+    "dim_store_date": DATA_PROCESSED / "dim_store_date.parquet",
     "fact_daily_sales": DATA_PROCESSED / "fact_daily_sales.parquet",
     "fact_store_transactions": DATA_PROCESSED / "fact_store_transactions.parquet",
     "fact_oil_price": DATA_PROCESSED / "fact_oil_price.parquet",
@@ -39,6 +41,7 @@ TABLE_GRAINS = {
     "dim_date": ["date_key"],
     "dim_store": ["store_key"],
     "dim_family": ["family_key"],
+    "dim_store_date": ["date_key", "store_key"],
     "fact_daily_sales": ["date_key", "store_key", "family_key"],
     "fact_store_transactions": ["date_key", "store_key"],
     "fact_oil_price": ["date_key"],
@@ -177,20 +180,29 @@ def run_warehouse_build() -> None:
     dim_date = _load_or_build_dim_date(start_date, end_date)
     dim_store = build_dim_store(interim["stores"])
     dim_family = build_dim_family(interim["train"])
+    bridge_store_holiday = build_bridge_store_holiday(
+        interim["holidays"], dim_date, dim_store
+    )
+    dim_store_date = build_dim_store_date(
+        dim_date,
+        dim_store,
+        interim["holidays"],
+        interim["train"],
+        interim["transactions"],
+    )
     warehouse = {
         "dim_date": dim_date,
         "dim_store": dim_store,
         "dim_family": dim_family,
+        "dim_store_date": dim_store_date,
         "fact_daily_sales": build_fact_daily_sales(
-            interim["train"], dim_date, dim_store, dim_family
+            interim["train"], dim_date, dim_store, dim_family, dim_store_date
         ),
         "fact_store_transactions": build_fact_store_transactions(
-            interim["transactions"], dim_date, dim_store
+            interim["transactions"], dim_date, dim_store, dim_store_date
         ),
         "fact_oil_price": build_fact_oil_price(interim["oil"], dim_date),
-        "bridge_store_holiday": build_bridge_store_holiday(
-            interim["holidays"], dim_date, dim_store
-        ),
+        "bridge_store_holiday": bridge_store_holiday,
     }
 
     validation = _warehouse_validation(warehouse)
@@ -210,7 +222,8 @@ def run_warehouse_build() -> None:
                 np.isclose(
                     interim["train"]["sales"].sum(),
                     fact_sales["sales"].sum(),
-                    equal_nan=True,
+                    rtol=0,
+                    atol=1e-6,
                 )
             ),
         ),
@@ -239,6 +252,62 @@ def run_warehouse_build() -> None:
             interim["train"]["family"].nunique(),
             len(dim_family),
             interim["train"]["family"].nunique() == len(dim_family),
+        ),
+        (
+            "Store-date row count",
+            len(dim_date) * len(dim_store),
+            len(dim_store_date),
+            len(dim_store_date) == len(dim_date) * len(dim_store),
+        ),
+        (
+            "Store-date holiday mappings",
+            len(bridge_store_holiday),
+            int(dim_store_date["holiday_count"].gt(0).sum()),
+            int(dim_store_date["holiday_count"].gt(0).sum())
+            == len(bridge_store_holiday),
+        ),
+        (
+            "Store-date sales observations",
+            interim["train"][["date", "store_nbr"]].drop_duplicates().shape[0],
+            int(dim_store_date["has_sales_observation"].sum()),
+            int(dim_store_date["has_sales_observation"].sum())
+            == interim["train"][["date", "store_nbr"]].drop_duplicates().shape[0],
+        ),
+        (
+            "Store-date transaction observations",
+            interim["transactions"][["date", "store_nbr"]]
+            .drop_duplicates()
+            .shape[0],
+            int(dim_store_date["has_transaction_observation"].sum()),
+            int(dim_store_date["has_transaction_observation"].sum())
+            == interim["transactions"][["date", "store_nbr"]]
+            .drop_duplicates()
+            .shape[0],
+        ),
+        (
+            "Sales fact unmapped date-store keys",
+            0,
+            int(
+                (~fact_sales["date_store_key"].isin(dim_store_date["date_store_key"]))
+                .sum()
+            ),
+            bool(fact_sales["date_store_key"].isin(dim_store_date["date_store_key"]).all()),
+        ),
+        (
+            "Transaction fact unmapped date-store keys",
+            0,
+            int(
+                (
+                    ~fact_transactions["date_store_key"].isin(
+                        dim_store_date["date_store_key"]
+                    )
+                ).sum()
+            ),
+            bool(
+                fact_transactions["date_store_key"]
+                .isin(dim_store_date["date_store_key"])
+                .all()
+            ),
         ),
     ]
     failed = [name for name, _, _, passed in reconciliations if not passed]

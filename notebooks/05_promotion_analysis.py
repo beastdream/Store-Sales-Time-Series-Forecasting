@@ -445,13 +445,23 @@ def create_overall_figures(
     ).sum() / family["nonpromotion_observation_count"].sum()
     overall = pd.DataFrame(
         {
-            "cohort": ["is_promotion = 0", "is_promotion = 1"],
+            "cohort": [
+                "Nonpromotion observations",
+                "Promotion-active observations",
+            ],
             "average_sales": [nonpromo_average, promo_average],
         }
     )
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.barh(overall["cohort"], overall["average_sales"], color=["#457b9d", "#e9c46a"])
-    ax.set(title="Average sales by promotion cohort", xlabel="Average sales", ylabel="")
+    ax.set(
+        title=(
+            "Sales volume on promotion-active observations versus "
+            "nonpromotion observations"
+        ),
+        xlabel="Average sales volume",
+        ylabel="",
+    )
     ax.grid(axis="x", alpha=0.25)
     fig.tight_layout()
     fig.savefig(
@@ -497,9 +507,8 @@ def write_limitations(basic: pd.DataFrame, matched: pd.DataFrame) -> None:
     )
     LIMITATIONS_PATH.write_text(
         "# Promotion Analysis Limitations\n\n"
-        "- The promotion uplift proxy is descriptive only. It does not establish "
-        "that promotion causes sales to increase because promotion assignment is "
-        "not randomized.\n"
+        "- Promotion metrics are descriptive associations and do not establish "
+        "causal effects. Promotion assignment is not randomized.\n"
         "- Product selection, store, seasonality, holidays, pricing, and underlying "
         "demand may differ between promotion and non-promotion observations.\n"
         "- Aggregated comparisons can hide variation within a family, store, or "

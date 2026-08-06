@@ -2,8 +2,9 @@ CREATE TABLE IF NOT EXISTS analytics.fact_daily_sales (
     sales_id INTEGER PRIMARY KEY,
     date_key INTEGER NOT NULL,
     store_key INTEGER NOT NULL,
+    date_store_key BIGINT NOT NULL,
     family_key INTEGER NOT NULL,
-    sales NUMERIC(18, 4) NOT NULL CHECK (sales >= 0),
+    sales NUMERIC(20, 7) NOT NULL CHECK (sales >= 0),
     onpromotion INTEGER NOT NULL CHECK (onpromotion >= 0),
     is_promotion SMALLINT NOT NULL CHECK (is_promotion IN (0, 1)),
     CONSTRAINT uq_fact_daily_sales_grain
@@ -12,6 +13,9 @@ CREATE TABLE IF NOT EXISTS analytics.fact_daily_sales (
         FOREIGN KEY (date_key) REFERENCES analytics.dim_date (date_key),
     CONSTRAINT fk_fact_daily_sales_store
         FOREIGN KEY (store_key) REFERENCES analytics.dim_store (store_key),
+    CONSTRAINT fk_fact_daily_sales_store_date
+        FOREIGN KEY (date_store_key)
+        REFERENCES analytics.dim_store_date (date_store_key),
     CONSTRAINT fk_fact_daily_sales_family
         FOREIGN KEY (family_key) REFERENCES analytics.dim_family (family_key)
 );
@@ -22,13 +26,17 @@ COMMENT ON TABLE analytics.fact_daily_sales IS
 CREATE TABLE IF NOT EXISTS analytics.fact_store_transactions (
     date_key INTEGER NOT NULL,
     store_key INTEGER NOT NULL,
+    date_store_key BIGINT NOT NULL,
     transactions INTEGER NOT NULL CHECK (transactions >= 0),
     CONSTRAINT pk_fact_store_transactions
         PRIMARY KEY (date_key, store_key),
     CONSTRAINT fk_fact_store_transactions_date
         FOREIGN KEY (date_key) REFERENCES analytics.dim_date (date_key),
     CONSTRAINT fk_fact_store_transactions_store
-        FOREIGN KEY (store_key) REFERENCES analytics.dim_store (store_key)
+        FOREIGN KEY (store_key) REFERENCES analytics.dim_store (store_key),
+    CONSTRAINT fk_fact_store_transactions_store_date
+        FOREIGN KEY (date_store_key)
+        REFERENCES analytics.dim_store_date (date_store_key)
 );
 
 COMMENT ON TABLE analytics.fact_store_transactions IS
@@ -78,11 +86,17 @@ CREATE INDEX IF NOT EXISTS idx_fact_daily_sales_store_key
 CREATE INDEX IF NOT EXISTS idx_fact_daily_sales_family_key
     ON analytics.fact_daily_sales (family_key);
 
+CREATE INDEX IF NOT EXISTS idx_fact_daily_sales_date_store_key
+    ON analytics.fact_daily_sales (date_store_key);
+
 CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_date_key
     ON analytics.fact_store_transactions (date_key);
 
 CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_store_key
     ON analytics.fact_store_transactions (store_key);
+
+CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_date_store_key
+    ON analytics.fact_store_transactions (date_store_key);
 
 CREATE INDEX IF NOT EXISTS idx_fact_oil_price_date_key
     ON analytics.fact_oil_price (date_key);

@@ -81,7 +81,12 @@ def load_store_daily() -> pd.DataFrame:
     ].fillna(0).astype("int8")
     if len(result) != len(daily):
         raise AssertionError("Context mapping changed store-day row count")
-    if not np.isclose(result["actual_sales"].sum(), fact["sales"].sum()):
+    if not np.isclose(
+        result["actual_sales"].sum(),
+        fact["sales"].sum(),
+        rtol=0,
+        atol=1e-6,
+    ):
         raise AssertionError("Context mapping changed total sales")
     return result
 

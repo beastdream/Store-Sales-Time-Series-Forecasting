@@ -28,6 +28,12 @@ ISSUE_CLASSES = {
     "High volatility",
     "Promotion dependent",
 }
+RISK_FLAG_COLUMNS = [
+    "is_insufficient_history",
+    "is_intermittent",
+    "is_promotion_dependent",
+    "is_high_volatility",
+]
 
 
 def safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
@@ -168,7 +174,7 @@ def classify_series(
         thresholds["promotion_rate_q75"]
     )
     high_volatility = metrics["coefficient_of_variation"].ge(thresholds["cv_q75"])
-    ready = (
+    ready_criteria = (
         metrics["history_length"].ge(READY_HISTORY_DAYS)
         & metrics["zero_sales_rate"].le(thresholds["zero_sales_rate_median"])
         & metrics["coefficient_of_variation"].le(thresholds["cv_median"])
@@ -177,13 +183,21 @@ def classify_series(
         )
     )
     result = metrics.copy()
+    result["is_insufficient_history"] = insufficient.astype("uint8")
+    result["is_intermittent"] = intermittent.astype("uint8")
+    result["is_promotion_dependent"] = promotion_dependent.astype("uint8")
+    result["is_high_volatility"] = high_volatility.astype("uint8")
+    result["risk_flag_count"] = result[RISK_FLAG_COLUMNS].sum(axis=1).astype("uint8")
+    result["is_ready"] = (
+        ready_criteria & result["risk_flag_count"].eq(0)
+    ).astype("uint8")
     result["readiness_class"] = np.select(
         [
             insufficient,
             intermittent,
             promotion_dependent,
             high_volatility,
-            ready,
+            result["is_ready"].eq(1),
         ],
         [
             "Insufficient history",
@@ -200,7 +214,7 @@ def classify_series(
             intermittent,
             promotion_dependent,
             high_volatility,
-            ready,
+            result["is_ready"].eq(1),
         ],
         [
             f"history_length < {INSUFFICIENT_HISTORY_DAYS} or active_days < {MIN_ACTIVE_DAYS}",
@@ -217,6 +231,30 @@ def classify_series(
     for name, value in thresholds.items():
         result[name] = value
     return result, thresholds
+
+
+def _overlap_summary(readiness: pd.DataFrame, dimension: str) -> pd.DataFrame:
+    """Rank dimensions by series carrying two or more independent risk flags."""
+    working = readiness.assign(
+        has_overlapping_risks=readiness["risk_flag_count"].ge(2)
+    )
+    summary = (
+        working.groupby(dimension, as_index=False, observed=True)
+        .agg(
+            series_count=("risk_flag_count", "size"),
+            overlapping_risk_series=("has_overlapping_risks", "sum"),
+            total_risk_flags=("risk_flag_count", "sum"),
+            average_risk_flags=("risk_flag_count", "mean"),
+            maximum_risk_flags=("risk_flag_count", "max"),
+        )
+    )
+    summary["overlap_rate"] = safe_divide(
+        summary["overlapping_risk_series"], summary["series_count"]
+    )
+    return summary.sort_values(
+        ["overlapping_risk_series", "total_risk_flags", "overlap_rate"],
+        ascending=False,
+    )
 
 
 def _problem_summary(
@@ -290,6 +328,45 @@ def write_report(
     class_counts["Tỷ lệ"] = (
         class_counts["Số chuỗi"] / len(readiness) * 100
     ).map(lambda value: f"{value:.1f}%")
+
+    flag_labels = {
+        "is_insufficient_history": "Insufficient history",
+        "is_intermittent": "Intermittent demand",
+        "is_promotion_dependent": "Promotion dependent",
+        "is_high_volatility": "High volatility",
+        "is_ready": "Ready (no serious risk flags)",
+    }
+    flag_counts = pd.DataFrame(
+        {
+            "Flag": [flag_labels[column] for column in [*RISK_FLAG_COLUMNS, "is_ready"]],
+            "Số chuỗi": [
+                int(readiness[column].sum())
+                for column in [*RISK_FLAG_COLUMNS, "is_ready"]
+            ],
+        }
+    )
+    flag_counts["Tỷ lệ"] = (flag_counts["Số chuỗi"] / len(readiness) * 100).map(
+        lambda value: f"{value:.1f}%"
+    )
+    risk_distribution = (
+        readiness["risk_flag_count"]
+        .map(lambda value: str(value) if value < 3 else "3+")
+        .value_counts()
+        .reindex(["0", "1", "2", "3+"], fill_value=0)
+        .rename_axis("Số risk flags")
+        .reset_index(name="Số chuỗi")
+    )
+    risk_distribution["Tỷ lệ"] = (
+        risk_distribution["Số chuỗi"] / len(readiness) * 100
+    ).map(lambda value: f"{value:.1f}%")
+
+    family_overlap = _overlap_summary(readiness, "family").head(10).copy()
+    store_overlap = _overlap_summary(readiness, "store_nbr").head(10).copy()
+    for frame in (family_overlap, store_overlap):
+        frame["overlap_rate"] = frame["overlap_rate"].map(lambda value: f"{value:.1%}")
+        frame["average_risk_flags"] = frame["average_risk_flags"].map(
+            lambda value: f"{value:.2f}"
+        )
 
     family_issues = _problem_summary(readiness, "family").head(10)
     family_context = family_performance[
@@ -385,7 +462,13 @@ def write_report(
         "",
         "## Quy tắc phân loại",
         "",
-        "Quy tắc được áp dụng theo thứ tự ưu tiên và mỗi chuỗi chỉ nhận một nhãn:",
+        "Các risk flag được tính độc lập nên một chuỗi có thể đồng thời intermittent, "
+        "promotion dependent và high volatility. `risk_flag_count` là tổng bốn risk "
+        "flags và không tính `is_ready`. `is_ready = 1` chỉ khi chuỗi đạt rule Ready "
+        "và không có risk flag nghiêm trọng.",
+        "",
+        "`readiness_class` vẫn là nhãn chính duy nhất. Khi nhiều rule cùng đúng, nhãn "
+        "chính được chọn theo thứ tự ưu tiên đã công bố sau:",
         "",
         f"1. **Insufficient history:** history < {INSUFFICIENT_HISTORY_DAYS} ngày hoặc active days < {MIN_ACTIVE_DAYS}.",
         "2. **Intermittent demand:** zero-sales rate ≥ Q75.",
@@ -399,6 +482,24 @@ def write_report(
         "## Phân bố readiness",
         "",
         _markdown_table(class_counts),
+        "",
+        "## Phân bố overlapping flags",
+        "",
+        "### Số chuỗi theo từng flag độc lập",
+        "",
+        _markdown_table(flag_counts),
+        "",
+        "### Số chuỗi theo số lượng risk flags",
+        "",
+        _markdown_table(risk_distribution),
+        "",
+        "### Family có nhiều overlapping risks",
+        "",
+        _markdown_table(family_overlap),
+        "",
+        "### Store có nhiều overlapping risks",
+        "",
+        _markdown_table(store_overlap),
         "",
         "## Family thường gặp vấn đề",
         "",
@@ -475,6 +576,12 @@ def main() -> None:
         "observed_period_count",
         "missing_period_count",
         "has_positive_sales",
+        "is_insufficient_history",
+        "is_intermittent",
+        "is_promotion_dependent",
+        "is_high_volatility",
+        "is_ready",
+        "risk_flag_count",
         "readiness_class",
         "classification_rule",
         "zero_sales_rate_median",
@@ -495,6 +602,10 @@ def main() -> None:
         anomalies,
     )
     print(readiness["readiness_class"].value_counts().to_string())
+    print("\nIndependent flags:")
+    print(readiness[[*RISK_FLAG_COLUMNS, "is_ready"]].sum().to_string())
+    print("\nRisk flag count:")
+    print(readiness["risk_flag_count"].value_counts().sort_index().to_string())
     print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
     print(f"Report: {REPORT_PATH.relative_to(PROJECT_ROOT)}")
 

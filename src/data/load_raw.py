@@ -30,7 +30,7 @@ def load_train() -> pd.DataFrame:
             "id": "uint32",
             "store_nbr": "uint8",
             "family": "category",
-            "sales": "float32",
+            "sales": "float64",
             "onpromotion": "uint16",
         },
         parse_dates=("date",),
@@ -102,7 +102,7 @@ def load_sample_submission() -> pd.DataFrame:
     """Load ``sample_submission.csv`` with compact numeric dtypes."""
     return _load_csv(
         "sample_submission.csv",
-        dtype={"id": "uint32", "sales": "float32"},
+        dtype={"id": "uint32", "sales": "float64"},
     )
 
 

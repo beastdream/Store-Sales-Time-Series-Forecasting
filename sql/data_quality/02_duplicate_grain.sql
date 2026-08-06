@@ -21,6 +21,15 @@ FROM (
     SELECT family_key FROM analytics.dim_family GROUP BY family_key HAVING COUNT(*) > 1
 ) AS duplicates
 UNION ALL
+SELECT 'dim_store_date_duplicate_grain', 'FAIL', COUNT(*)::TEXT, '0', COUNT(*) = 0,
+       'Duplicate date_key + store_key combinations'
+FROM (
+    SELECT date_key, store_key
+    FROM analytics.dim_store_date
+    GROUP BY date_key, store_key
+    HAVING COUNT(*) > 1
+) AS duplicates
+UNION ALL
 SELECT 'fact_daily_sales_duplicate_grain', 'FAIL', COUNT(*)::TEXT, '0', COUNT(*) = 0,
        'Duplicate date_key + store_key + family_key combinations'
 FROM (

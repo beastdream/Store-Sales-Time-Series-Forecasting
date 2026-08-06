@@ -41,6 +41,31 @@ CREATE TABLE IF NOT EXISTS analytics.dim_family (
 COMMENT ON TABLE analytics.dim_family IS
     'Grain: one row per product family.';
 
+CREATE TABLE IF NOT EXISTS analytics.dim_store_date (
+    date_store_key BIGINT PRIMARY KEY,
+    date_key INTEGER NOT NULL,
+    store_key INTEGER NOT NULL,
+    holiday_count INTEGER NOT NULL CHECK (holiday_count >= 0),
+    holiday_descriptions TEXT NOT NULL,
+    holiday_types TEXT NOT NULL,
+    holiday_locales TEXT NOT NULL,
+    is_holiday SMALLINT NOT NULL CHECK (is_holiday IN (0, 1)),
+    is_work_day SMALLINT NOT NULL CHECK (is_work_day IN (0, 1)),
+    is_event SMALLINT NOT NULL CHECK (is_event IN (0, 1)),
+    has_sales_observation SMALLINT NOT NULL
+        CHECK (has_sales_observation IN (0, 1)),
+    has_transaction_observation SMALLINT NOT NULL
+        CHECK (has_transaction_observation IN (0, 1)),
+    CONSTRAINT uq_dim_store_date_grain UNIQUE (date_key, store_key),
+    CONSTRAINT fk_dim_store_date_date
+        FOREIGN KEY (date_key) REFERENCES analytics.dim_date (date_key),
+    CONSTRAINT fk_dim_store_date_store
+        FOREIGN KEY (store_key) REFERENCES analytics.dim_store (store_key)
+);
+
+COMMENT ON TABLE analytics.dim_store_date IS
+    'Grain: one row per date and store across the complete analysis calendar.';
+
 CREATE INDEX IF NOT EXISTS idx_dim_date_full_date
     ON analytics.dim_date (full_date);
 
@@ -49,3 +74,9 @@ CREATE INDEX IF NOT EXISTS idx_dim_store_store_nbr
 
 CREATE INDEX IF NOT EXISTS idx_dim_family_family
     ON analytics.dim_family (family);
+
+CREATE INDEX IF NOT EXISTS idx_dim_store_date_date_key
+    ON analytics.dim_store_date (date_key);
+
+CREATE INDEX IF NOT EXISTS idx_dim_store_date_store_key
+    ON analytics.dim_store_date (store_key);

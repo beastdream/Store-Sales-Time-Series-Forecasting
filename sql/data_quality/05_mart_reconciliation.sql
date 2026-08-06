@@ -79,7 +79,7 @@ violations AS (
             + (SELECT COUNT(*) FROM mart.seasonality
                WHERE total_transactions < 0) AS negative_transactions_count,
         (SELECT COUNT(*) FROM mart.daily_store_performance
-         WHERE promotion_sales_share::TEXT IN ('Infinity', '-Infinity')
+         WHERE promotion_active_sales_share_proxy::TEXT IN ('Infinity', '-Infinity')
             OR sales_volume_per_transaction::TEXT IN ('Infinity', '-Infinity'))
             + (SELECT COUNT(*) FROM mart.family_performance
                WHERE promotion_uplift_proxy_pct::TEXT IN ('Infinity', '-Infinity'))

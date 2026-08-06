@@ -8,6 +8,7 @@ FACT_DAILY_SALES_COLUMNS = [
     "sales_id",
     "date_key",
     "store_key",
+    "date_store_key",
     "family_key",
     "sales",
     "onpromotion",
@@ -42,11 +43,42 @@ def _raise_for_unmapped_key(
         )
 
 
+def _merge_date_store_key(
+    fact: pd.DataFrame,
+    dim_store_date: pd.DataFrame,
+    fact_name: str,
+) -> pd.DataFrame:
+    """Attach the conformed date-store key without removing audit keys."""
+    _require_columns(
+        dim_store_date,
+        ["date_store_key", "date_key", "store_key"],
+        "dim_store_date",
+    )
+    mapped = fact.merge(
+        dim_store_date[["date_store_key", "date_key", "store_key"]],
+        on=["date_key", "store_key"],
+        how="left",
+        validate="many_to_one",
+    )
+    if mapped["date_store_key"].isna().any():
+        examples = (
+            mapped.loc[mapped["date_store_key"].isna(), ["date_key", "store_key"]]
+            .drop_duplicates()
+            .head(5)
+            .to_dict("records")
+        )
+        raise ValueError(
+            f"{fact_name}: unmapped date_key + store_key combinations: {examples}"
+        )
+    return mapped
+
+
 def build_fact_daily_sales(
     train_clean: pd.DataFrame,
     dim_date: pd.DataFrame,
     dim_store: pd.DataFrame,
     dim_family: pd.DataFrame,
+    dim_store_date: pd.DataFrame,
 ) -> pd.DataFrame:
     """Map cleaned daily family sales to dimension keys and reconcile measures."""
     train_columns = [
@@ -95,11 +127,17 @@ def build_fact_daily_sales(
     )
     _raise_for_unmapped_key(fact, "family_key", "family", "fact_daily_sales")
     fact = fact.drop(columns="family").rename(columns={"id": "sales_id"})
+    fact = _merge_date_store_key(fact, dim_store_date, "fact_daily_sales")
     fact = fact.loc[:, FACT_DAILY_SALES_COLUMNS]
 
     if len(fact) != source_row_count:
         raise RuntimeError("fact_daily_sales: row count reconciliation failed")
-    if not np.isclose(fact["sales"].sum(), source_sales, equal_nan=True):
+    if not np.isclose(
+        fact["sales"].sum(),
+        source_sales,
+        rtol=0,
+        atol=1e-6,
+    ):
         raise RuntimeError("fact_daily_sales: sales total reconciliation failed")
     if fact["onpromotion"].sum() != source_onpromotion:
         raise RuntimeError("fact_daily_sales: onpromotion total reconciliation failed")
@@ -121,6 +159,7 @@ def build_fact_store_transactions(
     transactions_clean: pd.DataFrame,
     dim_date: pd.DataFrame,
     dim_store: pd.DataFrame,
+    dim_store_date: pd.DataFrame,
 ) -> pd.DataFrame:
     """Map daily store transactions to date and store surrogate keys."""
     transaction_columns = ["date", "store_nbr", "transactions"]
@@ -159,8 +198,10 @@ def build_fact_store_transactions(
         "store_nbr",
         "fact_store_transactions",
     )
-    fact = fact.drop(columns="store_nbr").loc[
-        :, ["date_key", "store_key", "transactions"]
+    fact = fact.drop(columns="store_nbr")
+    fact = _merge_date_store_key(fact, dim_store_date, "fact_store_transactions")
+    fact = fact.loc[
+        :, ["date_key", "store_key", "date_store_key", "transactions"]
     ]
 
     if len(fact) != source_row_count:

@@ -10,11 +10,13 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 ### Insight 1.1 — Quy mô lớn nhưng mức độ sẵn sàng dự báo không đồng đều
 
 - **Finding:** Dữ liệu chứa `1.073.644.952,18` tổng sales trên 54 store và 33
-  family, nhưng chỉ `364/1.782` chuỗi store–family (`20,4%`) được xếp loại Ready.
+  family, nhưng chỉ `364/1.782` chuỗi store–family (`20,4%`) được xếp loại Ready;
+  `438` chuỗi (`24,6%`) đồng thời mang ít nhất hai risk flags.
 - **Evidence:** `warehouse_reconciliation.md` xác nhận 3.000.888 fact rows, 54
   store, 33 family và tổng sales được reconcile; `forecast_readiness.csv` ghi
-  nhận 364 Ready, 345 Ready with caution, 417 Intermittent demand, 144
-  Insufficient history, 102 High volatility và 410 Promotion dependent.
+  nhận primary classes gồm 364 Ready, 345 Ready with caution, 417 Intermittent
+  demand, 144 Insufficient history, 102 High volatility và 410 Promotion
+  dependent; phân bố overlap gồm 380 chuỗi có hai và 58 chuỗi có ba risk flags.
 - **Business implication:** Một chiến lược forecast duy nhất cho mọi chuỗi sẽ bỏ
   qua khác biệt lớn về lịch sử, zero sales, volatility và promotion exposure.
 - **Recommended action:** Thiết kế validation và benchmark riêng theo sáu nhóm
@@ -29,7 +31,8 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
   trung bình `808.565,34`; correlation store-day giữa sales và transactions là
   `0,837`; median promotion uplift proxy giảm từ `111,85%` unmatched xuống
   `19,35%` khi matched.
-- **Evidence:** Các số lần lượt đến từ `holiday_analysis.csv`,
+- **Evidence:** Calendar averages lấy trực tiếp từ `daily_sales_summary.csv` và
+  `weekday_month_summary.csv`; các số còn lại đến từ
   `transactions_analysis.csv` và `promotion_analysis_matched.csv`.
 - **Business implication:** Calendar, traffic và promotion context nên được đánh
   giá như forecast features hoặc scenario inputs, không chỉ dùng trend lịch sử.
@@ -75,8 +78,8 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 - **Finding:** Average daily system sales tăng từ `385.766,52` năm 2013 lên
   `575.478,70` năm 2014, `661.758,52` năm 2015 và `790.834,31` năm 2016; mức
   2016 cao hơn 2013 khoảng `105,0%`.
-- **Evidence:** Tổng hợp `holiday_analysis.csv` theo ngày và năm trên 364 ngày có
-  sales ở 2013, 364 ngày ở 2014, 364 ngày ở 2015 và 365 ngày ở 2016.
+- **Evidence:** `daily_sales_summary.csv` tổng hợp trực tiếp từ sales fact, với 364
+  ngày có observation ở 2013, 364 ở 2014, 364 ở 2015 và 365 ở 2016.
 - **Business implication:** Forecast cần học cả level/trend thay đổi theo thời gian;
   một average cố định toàn kỳ sẽ có nguy cơ under-forecast giai đoạn gần đây.
 - **Recommended action:** Dùng expanding-window backtest và baseline có trend;
@@ -84,27 +87,44 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 - **Limitation:** Trend mô tả có thể kết hợp store openings, assortment và nominal
   scale; dữ liệu không đủ để tách riêng từng cơ chế.
 
-### Insight 3.2 — Năm 2017 chỉ là partial year
+### Insight 3.2 — Năm 2017 chỉ được so sánh theo cùng cutoff
 
-- **Finding:** Average daily sales năm 2017 là `855.581,80`, nhưng chỉ dựa trên
-  227 ngày có sales đến `2017-08-15`; không thể so sánh total năm này với năm đủ.
-- **Evidence:** `audit_summary.md` xác nhận train kết thúc 15/08/2017 và test chạy
-  từ 16/08 đến 31/08/2017; `holiday_analysis.csv` có 227 observed dates năm 2017.
+- **Finding:** YTD sales đến `2017-08-15` là `194.217.068,37`, cao hơn cùng kỳ
+  2016 (`176.562.909,57`) khoảng `10,00%`; average daily sales 2017 là
+  `855.581,80` trên 227 ngày observation, không phải một năm đầy đủ.
+- **Evidence:** `daily_sales_summary.csv` cung cấp calendar-aligned YTD; trong
+  `monthly_sales_summary.csv`, tháng 07/2017 có MoM `+5,17%` và YoY `+15,13%`,
+  còn tháng 08/2017 được đánh dấu incomplete nên không có growth hợp lệ.
 - **Business implication:** Annual totals hoặc year-over-year 2017 có thể gây hiểu
   nhầm nếu không align cùng date range.
 - **Recommended action:** Khi trình bày YoY, so sánh year-to-date cùng cutoff hoặc
   dùng daily/monthly average với nhãn partial period.
 - **Limitation:** Daily average vẫn chịu season mix vì 2017 chưa có Sep–Dec.
 
+### Insight 3.3 — Missing observation không đồng nghĩa sales bằng 0
+
+- **Finding:** Có bốn ngày thiếu sales observation trong lịch sử: `2013-12-25`,
+  `2014-12-25`, `2015-12-25` và `2016-12-25`; cả bốn đều có
+  `has_sales_observation = 0` và `total_sales` để trống.
+- **Evidence:** `daily_sales_summary.csv` giữ complete calendar từ `dim_date` và
+  không zero-fill các ngày thiếu; moving averages loại các giá trị thiếu khỏi
+  trailing 7/28 calendar-day windows.
+- **Business implication:** Gán các ngày này bằng 0 sẽ tạo target giả và làm lệch
+  trend, seasonality cũng như holiday comparison.
+- **Recommended action:** Giữ `has_sales_observation` trong feature/quality layer và
+  quyết định imputation riêng trong modeling, có audit rõ ràng.
+- **Limitation:** Dữ liệu không cho biết nguyên nhân không có observation; không thể
+  kết luận cửa hàng đóng cửa hay sales thực tế bằng 0.
+
 ## 4. Seasonality
 
 ### Insight 4.1 — Weekend, đặc biệt Sunday, có scale cao hơn
 
 - **Finding:** Daily system sales trung bình cao nhất vào Sunday (`825.218,12`),
-  kế đến Saturday (`772.205,59`); Thursday thấp nhất (`505.269,20`). Sunday cao
-  hơn Thursday khoảng `63,3%`.
-- **Evidence:** Tổng hợp daily system rows từ `holiday_analysis.csv` theo
-  `day_name`; mọi store-day được aggregate trước khi so sánh.
+  kế đến Saturday (`772.205,59`); Thursday thấp nhất (`505.269,20`). Weekend
+  average (`798.656,75`) cao hơn weekday (`573.143,02`) khoảng `39,3%`.
+- **Evidence:** `daily_sales_summary.csv` và `weekday_month_summary.csv` tổng hợp
+  trực tiếp observed daily sales; missing observations không được coi là 0.
 - **Business implication:** Weekly seasonality là tín hiệu forecast quan trọng và
   có thể ảnh hưởng kế hoạch staffing/vận hành theo ngày.
 - **Recommended action:** Bắt buộc có weekday features và báo cáo forecast error
@@ -116,9 +136,10 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 
 - **Finding:** Theo month-of-year, December cao nhất (`808.565,34` average daily
   sales) và February thấp nhất (`571.895,24`), chênh khoảng `41,4%`.
-- **Evidence:** `holiday_analysis.csv` được tổng hợp theo calendar month qua toàn
-  bộ observed years. Tháng cao tiếp theo là November (`669.464,90`) và July
-  (`666.858,46`).
+- **Evidence:** `daily_sales_summary.csv` và `weekday_month_summary.csv` được tổng
+  hợp theo calendar month qua toàn bộ observed years. Tháng cao tiếp theo là
+  November (`669.464,90`) và July (`666.858,46`); payday average là `645.965,89`
+  so với non-payday `636.962,96` (`+1,4%`).
 - **Business implication:** Forecast horizon chạm các tháng cao/thấp cần seasonal
   calibration; cùng một mức safety buffer cho mọi tháng sẽ thiếu linh hoạt.
 - **Recommended action:** Thêm month/year-season features và backtest riêng
@@ -188,6 +209,8 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
   không có inventory để phân biệt.
 
 ## 7. Promotion findings
+
+> Promotion metrics are descriptive associations and do not establish causal effects.
 
 ### Insight 7.1 — Unmatched promotion proxy phóng đại nhiều family
 
@@ -280,32 +303,38 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 
 ## 10. Forecast readiness
 
-### Insight 10.1 — 39,8% chuỗi ở nhóm thuận lợi hơn cho modeling ban đầu
+### Insight 10.1 — Primary class che một phần rủi ro chồng lấp
 
-- **Finding:** 364 Ready và 345 Ready with caution tạo thành 709/1.782 chuỗi
-  (`39,8%`); 417 Intermittent và 410 Promotion dependent là hai risk groups lớn nhất.
-- **Evidence:** `forecast_readiness.csv`; thresholds lấy trên eligible series gồm
-  zero-sales Q75 `23,05%`, CV Q75 `1,110` và promotion-rate Q75 `43,25%`.
+- **Finding:** Primary class ghi 417 Intermittent, 410 Promotion dependent và 102
+  High volatility, nhưng các flag độc lập lần lượt là 530 (`29,7%`), 426 (`23,9%`)
+  và 469 (`26,3%`). Có 709 chuỗi không mang risk flag, 635 có một, 380 có hai và
+  58 có ba risk flags.
+- **Evidence:** `forecast_readiness.csv` và `forecast_readiness.md`; threshold được
+  giữ nguyên: zero-sales Q75 `23,05%`, CV Q75 `1,110`, promotion-rate Q75
+  `43,25%`, history rule 365 ngày/90 active days và Ready rule 730 ngày.
 - **Business implication:** Modeling roadmap nên ưu tiên nhóm có đủ signal rồi mở
   rộng bằng specialized methods, thay vì tối ưu một average score toàn bộ hierarchy.
-- **Recommended action:** Xây benchmark matrix theo readiness class và bắt buộc báo
-  cáo error/bias/coverage trên từng nhóm.
+- **Recommended action:** Xây benchmark matrix theo primary class nhưng báo cáo
+  error/bias/coverage thêm theo từng flag và overlap count; không coi primary class
+  là mô tả đầy đủ mọi rủi ro của series.
 - **Limitation:** Quantile rules phản ánh dataset này; phải tái tính khi data refresh
   hoặc business scope thay đổi.
 
-### Insight 10.2 — Problem concentration rõ ở family và store
+### Insight 10.2 — Overlapping risks tập trung theo family và store
 
-- **Finding:** BABY CARE, BOOKS, GROCERY I, HOME APPLIANCES và SCHOOL AND OFFICE
-  SUPPLIES đều có 54/54 series thuộc issue groups; store 52 có 33/33.
-- **Evidence:** `forecast_readiness.csv` và bảng đối chiếu trong
-  `forecast_readiness.md`; dominant issue của GROCERY I là Promotion dependent,
-  còn BOOKS/BABY CARE là Insufficient history.
+- **Finding:** BOOKS có 54/54 series mang ít nhất hai risks và tổng 132 flags;
+  BABY CARE có 53/54 và 128 flags; SCHOOL AND OFFICE SUPPLIES có 53/54. Store 52
+  dẫn đầu store overlap với 20/33 series và tổng 54 flags.
+- **Evidence:** Các bảng “Family/Store có nhiều overlapping risks” trong
+  `forecast_readiness.md`, được tổng hợp từ các cột nhị phân của
+  `forecast_readiness.csv`.
 - **Business implication:** Issue mang tính cấu trúc theo hierarchy, phù hợp với
   pooled/global hoặc hierarchical learning hơn 1.782 local models độc lập.
 - **Recommended action:** Thiết kế global model có store/family embeddings hoặc
   categorical effects, nhưng vẫn giữ fallback theo readiness class.
-- **Limitation:** Đây là đề xuất modeling cần được temporal backtest; chưa có model
-  nào được huấn luyện ở giai đoạn EDA/readiness.
+- **Limitation:** Flags dùng threshold rule/quantile và có correlation với nhau;
+  overlap không chứng minh nhiều nguyên nhân độc lập. Chưa có model nào được huấn
+  luyện ở giai đoạn EDA/readiness.
 
 ## 11. Data limitations
 
@@ -340,7 +369,8 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 
 - **Finding:** Sunday average daily sales `825.218,12` so với Thursday
   `505.269,20`; December `808.565,34` so với February `571.895,24`.
-- **Evidence:** Section 4, tổng hợp từ `holiday_analysis.csv`.
+- **Evidence:** Section 4, `daily_sales_summary.csv` và
+  `weekday_month_summary.csv`.
 - **Business implication:** Workload và sales volume có seasonality tuần/tháng rõ.
 - **Recommended action:** Tạo forecast review theo weekday/month và dùng forecast
   interval để hỗ trợ staffing, allocation và vận hành; không quy đổi trực tiếp
@@ -349,12 +379,14 @@ phân tích nào dưới đây chứng minh quan hệ nhân quả.
 
 ### Recommendation 12.2 — Tách forecast strategy theo readiness
 
-- **Finding:** Chỉ 709/1.782 chuỗi là Ready hoặc Ready with caution; 417
-  Intermittent và 144 Insufficient history.
+- **Finding:** 709/1.782 chuỗi không có serious risk flag; 438 chuỗi có ít nhất hai
+  risks. Flag độc lập ghi 530 Intermittent, 469 High volatility, 426 Promotion
+  dependent và 144 Insufficient history.
 - **Evidence:** Section 10 và `forecast_readiness.csv`.
 - **Business implication:** Local model cho chuỗi thưa/ngắn dễ thiếu ổn định.
 - **Recommended action:** Dùng global/hierarchical baseline cho toàn bộ hierarchy,
-  thêm intermittent benchmark cho 417 chuỗi và cold-start fallback cho 144 chuỗi.
+  thêm intermittent benchmark cho 530 flagged series, cold-start fallback cho 144
+  series và đánh giá riêng 438 series có overlapping risks.
 - **Limitation:** Chọn phương pháp cuối cùng phải dựa trên temporal backtest 16-day
   horizon, không dựa riêng vào readiness label.
 

@@ -19,7 +19,7 @@ def _train_frame() -> pd.DataFrame:
             "date": pd.to_datetime(["2017-01-02", "2017-01-01"]),
             "store_nbr": [1, 1],
             "family": ["B", "A"],
-            "sales": pd.Series([3.5, 0.0], dtype="float32"),
+            "sales": pd.Series([3.1234567, 0.0], dtype="float64"),
             "onpromotion": [2, 0],
         }
     )

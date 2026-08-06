@@ -19,7 +19,9 @@ Các median/Q75 chỉ được tính trên chuỗi đã có ít nhất một nă
 
 ## Quy tắc phân loại
 
-Quy tắc được áp dụng theo thứ tự ưu tiên và mỗi chuỗi chỉ nhận một nhãn:
+Các risk flag được tính độc lập nên một chuỗi có thể đồng thời intermittent, promotion dependent và high volatility. `risk_flag_count` là tổng bốn risk flags và không tính `is_ready`. `is_ready = 1` chỉ khi chuỗi đạt rule Ready và không có risk flag nghiêm trọng.
+
+`readiness_class` vẫn là nhãn chính duy nhất. Khi nhiều rule cùng đúng, nhãn chính được chọn theo thứ tự ưu tiên đã công bố sau:
 
 1. **Insufficient history:** history < 365 ngày hoặc active days < 90.
 2. **Intermittent demand:** zero-sales rate ≥ Q75.
@@ -38,6 +40,57 @@ Quy tắc được áp dụng theo thứ tự ưu tiên và mỗi chuỗi chỉ 
 | Insufficient history | 144 | 8.1% |
 | High volatility | 102 | 5.7% |
 | Promotion dependent | 410 | 23.0% |
+
+## Phân bố overlapping flags
+
+### Số chuỗi theo từng flag độc lập
+
+| Flag | Số chuỗi | Tỷ lệ |
+| --- | --- | --- |
+| Insufficient history | 144 | 8.1% |
+| Intermittent demand | 530 | 29.7% |
+| Promotion dependent | 426 | 23.9% |
+| High volatility | 469 | 26.3% |
+| Ready (no serious risk flags) | 364 | 20.4% |
+
+### Số chuỗi theo số lượng risk flags
+
+| Số risk flags | Số chuỗi | Tỷ lệ |
+| --- | --- | --- |
+| 0 | 709 | 39.8% |
+| 1 | 635 | 35.6% |
+| 2 | 380 | 21.3% |
+| 3+ | 58 | 3.3% |
+
+### Family có nhiều overlapping risks
+
+| family | series_count | overlapping_risk_series | total_risk_flags | average_risk_flags | maximum_risk_flags | overlap_rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| BOOKS | 54 | 54 | 132 | 2.44 | 3 | 100.0% |
+| BABY CARE | 54 | 53 | 128 | 2.37 | 3 | 98.1% |
+| SCHOOL AND OFFICE SUPPLIES | 54 | 53 | 107 | 1.98 | 2 | 98.1% |
+| HOME APPLIANCES | 54 | 50 | 105 | 1.94 | 3 | 92.6% |
+| HARDWARE | 54 | 39 | 88 | 1.63 | 2 | 72.2% |
+| MAGAZINES | 54 | 30 | 75 | 1.39 | 2 | 55.6% |
+| LAWN AND GARDEN | 54 | 26 | 75 | 1.39 | 3 | 48.1% |
+| LADIESWEAR | 54 | 23 | 66 | 1.22 | 3 | 42.6% |
+| FROZEN FOODS | 54 | 22 | 73 | 1.35 | 2 | 40.7% |
+| PET SUPPLIES | 54 | 21 | 62 | 1.15 | 2 | 38.9% |
+
+### Store có nhiều overlapping risks
+
+| store_nbr | series_count | overlapping_risk_series | total_risk_flags | average_risk_flags | maximum_risk_flags | overlap_rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| 52 | 33 | 20 | 54 | 1.64 | 3 | 60.6% |
+| 35 | 33 | 14 | 40 | 1.21 | 3 | 42.4% |
+| 32 | 33 | 13 | 36 | 1.09 | 3 | 39.4% |
+| 13 | 33 | 13 | 32 | 0.97 | 3 | 39.4% |
+| 33 | 33 | 12 | 36 | 1.09 | 3 | 36.4% |
+| 43 | 33 | 12 | 35 | 1.06 | 3 | 36.4% |
+| 10 | 33 | 11 | 34 | 1.03 | 3 | 33.3% |
+| 16 | 33 | 11 | 34 | 1.03 | 3 | 33.3% |
+| 26 | 33 | 11 | 34 | 1.03 | 3 | 33.3% |
+| 40 | 33 | 11 | 33 | 1.00 | 2 | 33.3% |
 
 ## Family thường gặp vấn đề
 

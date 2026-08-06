@@ -1,6 +1,6 @@
 # Promotion Analysis Limitations
 
-- The promotion uplift proxy is descriptive only. It does not establish that promotion causes sales to increase because promotion assignment is not randomized.
+- Promotion metrics are descriptive associations and do not establish causal effects. Promotion assignment is not randomized.
 - Product selection, store, seasonality, holidays, pricing, and underlying demand may differ between promotion and non-promotion observations.
 - Aggregated comparisons can hide variation within a family, store, or calendar group.
 - The matched comparison is more comparable than the unmatched overall comparison because it holds store, family, year, month, and day of week constant. It reduces observed composition and calendar-mix differences, but it is still not causal inference.

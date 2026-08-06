@@ -1,5 +1,7 @@
 """Execute PostgreSQL warehouse quality checks and write a Markdown report."""
 
+import argparse
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -150,8 +152,42 @@ def run_sql_quality_checks() -> list[dict[str, Any]]:
     return results
 
 
-def main() -> int:
+def dry_run_sql_quality_checks() -> dict[str, int]:
+    """Parse every quality SQL statement without creating a database connection."""
+    statement_count = 0
+    for path in QUALITY_SQL_PATHS:
+        statements = _read_statements(path)
+        if not statements:
+            raise RuntimeError(f"SQL quality file contains no statements: {path.name}")
+        for statement in statements:
+            if not sqlparse.parse(statement):
+                raise RuntimeError(f"SQL statement could not be parsed: {path.name}")
+        statement_count += len(statements)
+    return {"file_count": len(QUALITY_SQL_PATHS), "statement_count": statement_count}
+
+
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse CLI options for runtime or connection-free validation."""
+    parser = argparse.ArgumentParser(description="Run warehouse SQL quality checks.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Parse all quality SQL files without connecting to PostgreSQL.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     """Run SQL checks and return nonzero when any serious failure exists."""
+    args = _parse_args(argv)
+    if args.dry_run:
+        result = dry_run_sql_quality_checks()
+        print(
+            "SQL quality dry-run passed: "
+            f"{result['file_count']} files, {result['statement_count']} statements"
+        )
+        return 0
+
     results = run_sql_quality_checks()
     failures = sum(result["status"] == "FAIL" for result in results)
     warnings = sum(result["status"] == "WARNING" for result in results)

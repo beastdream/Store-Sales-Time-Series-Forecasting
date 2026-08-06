@@ -25,6 +25,7 @@ TABLE_LOAD_ORDER = [
     "dim_date",
     "dim_store",
     "dim_family",
+    "dim_store_date",
     "fact_daily_sales",
     "fact_store_transactions",
     "fact_oil_price",
@@ -158,7 +159,8 @@ def _validate_loaded_warehouse(
     if not np.isclose(
         float(database_sales),
         float(source_metrics["total_sales"]),
-        equal_nan=True,
+        rtol=0,
+        atol=1e-6,
     ):
         raise RuntimeError("Post-load total sales validation failed")
     if database_onpromotion != source_metrics["total_onpromotion"]:

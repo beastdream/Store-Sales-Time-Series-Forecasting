@@ -2,7 +2,7 @@
 
 ## Execution timestamp
 
-2026-08-06T21:34:04.129931+07:00
+2026-08-08T21:10:20.5871829+07:00
 
 ## Environment
 
@@ -11,9 +11,9 @@
 - Working directory: repository root (relative paths only in report)
 - PostgreSQL configured: `no`
 
-## Passed checks
+## PASS
 
-- **Pytest suite:** `python -m pytest -q` returned exit code 0. Last output: 135 passed in 4.99s
+- **Pytest suite:** `python -m pytest -q` returned exit code 0 on 2026-08-08. Last output: 135 passed in 6.83s
 - **Cleaning pipeline:** `python -m src.data.run_cleaning` returned exit code 0. Last output: .\reports\data_quality\cleaning_summary.md
 - **Warehouse pipeline:** `python -m src.data.run_warehouse_build` returned exit code 0. Last output: .\reports\data_quality\warehouse_reconciliation.md
 - **Read all required Parquet artifacts:** Read 14 Parquet files successfully.
@@ -32,17 +32,34 @@
 - **Absolute personal path scan:** No absolute personal-machine path found in tracked text files.
 - **Git hygiene rules:** Required ignore rules exist; .gitkeep is retained; no Parquet is tracked.
 - **SQL quality dry-run:** `python -m src.run_sql_quality_checks --dry-run` returned exit code 0. Last output: SQL quality dry-run passed: 5 files, 5 statements
+- **Power BI dashboard:** `powerbi/store_sales_analytics.pbix` exists and its
+  read-only layout metadata confirms eight analytical pages. Page 8 is `Forecast
+  Readiness & Anomalies` and contains the `Forecast Readiness` and `Sales Anomalies`
+  bookmarks with inverse `FR_Group`/`AN_Group` visibility.
+- **Completed DA scope:** store/family performance, trend/seasonality, promotion,
+  holiday/event, transaction/oil, forecast-readiness, and anomaly outputs are
+  present in the report and dashboard layers.
 
-## Warnings
+## KNOWN LIMITATIONS
 
 - **Raw SHA-256 baseline:** No baseline hash file exists; pre/post hashes were still compared.
 - **Ignored artifacts still tracked:** Raw CSV tracked=6; large reproducible report CSV tracked=3. Run documented git rm --cached commands manually.
+- **Sales semantics:** `sales` is Sales Volume, not revenue or profit; price, cost,
+  margin, inventory, stockout, and lead-time data are unavailable.
+- **Causality:** Promotion and holiday/event comparisons are descriptive
+  associations or proxy differences, not causal uplift estimates.
+- **Partial year:** Historical actual sales end on 2017-08-15, so 2017 is not a
+  complete actual-sales year even though the date dimension extends through the
+  2017-08-31 test horizon.
+- **Power BI operations:** The local PBIX is complete, but Power BI Service
+  publication, gateway, scheduled refresh, credentials, and production access are
+  not verified by repository evidence.
 
-## Failed checks
+## FAIL
 
 - None.
 
-## Not-run checks
+## NOT RUN
 
 - **PostgreSQL runtime:** PostgreSQL runtime was not requested; missing configuration: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.
 
@@ -86,15 +103,21 @@
 ## Power BI readiness
 
 - Processed model tables and date_store_key relationships are file-validated.
-- The expected single-direction DimStoreDate model is documented.
-- Power BI runtime, refresh, visuals, and reconciliation are not run; no .pbix/.pbit is claimed.
+- The single-direction `DimStoreDate` filter architecture is documented.
+- The local Power BI dashboard is complete and contains eight pages.
+- Forecast readiness and sales anomaly analysis are both present on Page 8 with
+  bookmark navigation.
+- Power BI Service runtime/publication/refresh is not claimed or validated.
 
-## Remaining work
+## FUTURE WORK
 
 - Configure and validate PostgreSQL DDL, load, marts, and runtime SQL quality checks.
 - Remove ignored raw/report artifacts from the Git index manually if still tracked.
-- Build and validate the actual Power BI model, measures, refresh, and report pages.
-- Define temporal backtests and forecasting baselines; no model is approved yet.
+- If deployment is required, validate Power BI Service publication, refresh,
+  gateway, credentials, access, and production reconciliation.
+- Begin the separate Data Science phase with 16-day temporal backtests, baselines,
+  leakage-safe feature engineering, model evaluation, and final prediction
+  generation. No forecast model or approved accuracy result exists yet.
 
 ## Commands to reproduce
 

@@ -1,5 +1,9 @@
 # Power BI Model Design
 
+> Historical design-stage evidence. The design was subsequently implemented in
+> `powerbi/store_sales_analytics.pbix`. Current pages, measures, bookmarks, status,
+> and cautions are documented in `docs/powerbi_model.md`.
+
 ## Modeling decision
 
 Power BI uses `DimStoreDate` as the primary store-day and holiday filtering
@@ -92,7 +96,7 @@ semantic meaning or use `COALESCE` to recode missing observations without an
 explicit business rule. Availability slicers and quality diagnostics must use the
 two observation flags from `DimStoreDate`.
 
-## Power BI implementation checklist
+## Original Power BI implementation checklist
 
 1. Load the seven core model tables and optionally retain `BridgeStoreHoliday` for
    audit/detail.
@@ -106,4 +110,6 @@ two observation flags from `DimStoreDate`.
 7. Do not add many-to-many or bidirectional relationships to compensate for a
    measure or slicer issue; correct the measure or model path instead.
 
-No `.pbix`, `.pbit`, or other Power BI file is created by this design task.
+This historical design task itself did not create a PBIX. The later implementation
+is now complete at `powerbi/store_sales_analytics.pbix`; this statement must not be
+read as the current project status.

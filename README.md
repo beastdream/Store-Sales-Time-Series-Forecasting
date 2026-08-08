@@ -1,141 +1,210 @@
 # Store Sales — Time Series Forecasting
 
-## Project overview
+## Project Overview
 
-This repository builds a reproducible analytics foundation for the Corporación
-Favorita store-sales dataset: validated raw-data cleaning, a dimensional warehouse,
-business EDA, forecast-readiness assessment, and a documented Power BI model. The
-current scope stops before model training and before a finished Power BI report.
+This repository contains the completed Data Engineering, Data Analysis, Power BI,
+and forecast-readiness phases for the Corporación Favorita store-sales dataset.
+It builds validated analytical data, a dimensional model, reproducible EDA outputs,
+and an eight-page interactive Power BI dashboard. Forecast model development has
+not started and belongs to the next phase.
 
-## Business problem
+## Business / Analytical Problem
 
-The project identifies how sales volume varies across dates, stores, product
-families, promotions, holidays, and store traffic, then assesses whether each
-store–family series is suitable for forecasting. In this dataset, `sales` is
-**sales volume, not revenue**. There is no cost, profit, inventory, stockout,
-lead-time, or margin data, so the analysis cannot measure profitability or convert
-a forecast directly into an ordering decision.
+The completed analytical phase examines how **Sales Volume** varies by time, store,
+product family, promotion activity, holidays/events, transactions, and oil-price
+context. It also assesses whether each store–family series has enough history and
+stability for forecasting.
+
+`sales` represents Sales Volume, not revenue or profit. The dataset contains no
+unit prices, cost, profit, inventory, stockout, margin, or lead-time fields, so the
+project cannot measure profitability or translate a forecast directly into an
+inventory order.
+
+Promotion and holiday views report descriptive associations, comparisons, and
+proxy differences. They do not establish causal uplift.
 
 ## Dataset
 
-The source consists of the competition CSVs for train/test sales, stores,
-transactions, oil prices, holidays/events, and sample submission. Raw CSVs belong
-under `data/raw/` and are intentionally excluded from Git. The observed sales fact
-runs from 2013-01-01 through 2017-08-15; the full analysis calendar extends through
-the test horizon on 2017-08-31.
+The source includes competition CSVs for train/test sales, stores, transactions,
+oil prices, holidays/events, and sample submission. Raw files are expected locally
+under `data/raw/` and are excluded by `.gitignore`.
 
-Validated warehouse totals are 1,073,644,952.2030685 units of sales volume,
-7,810,622 promoted items, and 141,478,945 transactions across 54 stores and 33
-families. These values come from the current
+- Historical actual-sales period: **2013-01-01 through 2017-08-15**.
+- The 2017 actual-sales period is partial and must not be compared naively with
+  complete calendar years.
+- Competition/test period: **2017-08-16 through 2017-08-31**.
+- The date dimension extends through 2017-08-31 to support the test horizon, but
+  dashboard labels and historical-actual metrics use 2017-08-15 as the final
+  observed sales date.
+- Stores: **54**.
+- Product families: **33**.
+- Potential store–family series: **1,782**.
+
+Validated warehouse totals and row counts are recorded in the current
 [warehouse reconciliation](reports/data_quality/warehouse_reconciliation.md).
 
-## Data grain
-
-The central grains are:
-
-- Sales: one observed row per date × store × family.
-- Transactions: one observed row per date × store; transactions are never expanded
-  across the 33 families.
-- Store-date context: one row per date × store over the complete analysis calendar.
-- Oil: one row per calendar date.
-- Forecast readiness: one row per store × family, or 1,782 series.
-
-See the complete [data dictionary](docs/data_dictionary.md).
-
-## Project architecture
+## Project Architecture
 
 ```text
 Raw CSV
-  → Cleaning
+  → Cleaning / Validation
   → Interim Parquet
-  → Warehouse Build
+  → Analytical Warehouse / Dimensional Model
   → Processed Parquet
-  → Business EDA
-  → Reports
-  → Power BI
-  → Future DS Forecasting
+  → EDA / Analytical Reports
+  → Power BI Dashboard
+  → Forecast Readiness Assessment
+  → [Next phase] Feature Engineering / Backtesting / Forecast Models
 ```
 
-Responsibility and output ownership are documented in
-[Architecture](docs/architecture.md).
+The implemented and planned boundaries are detailed in
+[Architecture](docs/architecture.md). Physical table contracts are in the
+[Data Dictionary](docs/data_dictionary.md).
 
-## Data-quality controls
+## Data Pipeline
 
-The Python pipeline validates required columns, numeric domains, source and target
-grain, foreign-key mappings, missing surrogate keys, row counts, date ranges, and
-measure reconciliation before persisting outputs. Current processed tables have
-zero duplicate grains and zero missing keys. Sales, promotions, transactions,
-dimension counts, store-date coverage, and observation flags reconcile to their
-clean sources.
+The Python pipeline validates required columns, types, numeric domains, source and
+target grains, foreign-key mappings, missing surrogate keys, row counts, date
+ranges, and measure reconciliation before writing artifacts.
 
-SQL DDL and data-quality queries also exist, but the PostgreSQL runtime remains
-**unvalidated** because no database connection/configuration was available during
-project validation. SQL syntax has been dry-run parsed; this is not evidence that
-DDL, loads, marts, or checks ran successfully in PostgreSQL. See
-[DA project validation](reports/da_project_validation.md).
+Key grains are:
 
-## Data warehouse model
+- `FactDailySales`: date × store × family.
+- `FactStoreTransactions`: date × store; transactions are never expanded across
+  product families.
+- `DimStoreDate`: complete date × store context grid, including observation flags.
+- `FactOilPrice`: calendar date.
+- `ForecastReadiness`: store × family.
 
-The warehouse contains conformed date, store, family, and store-date dimensions;
-sales, transaction, and oil facts; plus a holiday bridge. `dim_store_date` is the
-complete date–store grid and preserves the crucial distinction between “no source
-observation” and an observed zero. It also supplies the intended Power BI holiday
-filter path without duplicating transactions at family grain.
+`DimStoreDate` preserves the difference between a missing source observation and
+an observed zero. The local Parquet warehouse is validated. PostgreSQL DDL, loaders,
+marts, and quality SQL exist, but PostgreSQL runtime execution is still **NOT RUN**
+because no configured database was available; a SQL parse dry-run is not a runtime
+database validation.
 
-The physical contracts are in the [data dictionary](docs/data_dictionary.md), and
-the flow is described in [Architecture](docs/architecture.md).
+## Data Analysis
 
-## Business analysis
+The DA notebooks cover audit and cleaning, store/family performance,
+trend/seasonality, descriptive promotion comparison, holiday/event comparison,
+transactions and oil drivers, anomaly review, and forecast readiness. Tables,
+figures, and notes are under `reports/`; the consolidated interpretation is in
+[Business Insights](reports/business_insights.md).
 
-The notebook scripts cover audit/cleaning, warehouse construction, store and family
-performance, trend/seasonality, promotion association, holiday association,
-transactions, anomaly review, and forecast readiness. Generated tables and figures
-are stored under `reports/`; the consolidated interpretation is
-[Business insights](reports/business_insights.md).
+Selected report-verified findings include:
 
-Promotion comparisons are observational associations and **not causal effects**.
-Promotion assignment is not randomized, and price, campaign selection, demand,
-inventory, and other confounders are unavailable.
+- GROCERY I contributes 32.0% of Sales Volume and BEVERAGES contributes 20.2%;
+  together they account for about 52.2%.
+- Store 44 has the highest average daily Sales Volume at 36,869.09.
+- Store-day Sales Volume and transactions have a Pearson correlation of 0.837;
+  this is an association, not proof of causation.
+- Recent store growth compares 2017-05-18–2017-08-15 with the immediately
+  preceding 90-day window. The first-versus-last 90-day metric remains explicitly
+  labeled as a long-history proxy rather than recent growth.
 
-## Key findings
+## Power BI Dashboard
 
-Only metrics already published in project reports are summarized here:
+The completed local report is
+[`powerbi/store_sales_analytics.pbix`](powerbi/store_sales_analytics.pbix). Its
+metadata confirms eight analytical pages:
 
-- GROCERY I contributes 32.0% of sales volume and BEVERAGES contributes 20.2%; the
-  two families together account for about 52.2%.
-- Store 44 has the highest average daily sales volume at 36,869.09.
-- The recent store-growth window is 2017-05-18–2017-08-15 versus the immediately
-  preceding 2017-02-17–2017-05-17 window. The older first-versus-last 90-day metric
-  remains explicitly labeled as a proxy, not recent growth.
-- Total sales and store-day transactions have a reported Pearson correlation of
-  0.837; this is association, not proof that traffic causes sales changes.
-- Forecast readiness contains 709 series with zero serious risk flags, 635 with
-  one, 380 with two, and 58 with three or more.
+1. Executive Overview
+2. Sales Trend & Seasonality
+3. Store Performance
+4. Product Family Performance
+5. Promotion Analysis
+6. Holiday & Event Analysis
+7. Transactions & Oil Drivers
+8. Forecast Readiness & Anomalies
 
-## Limitations
+The report provides interactive filtering and drillable analytical views. Page 8
+uses bookmark navigation between **Forecast Readiness** and **Sales Anomalies**.
+The first bookmark shows `FR_Group` and hides `AN_Group`; the second reverses that
+visibility. Visual comparisons of promotion and holidays remain descriptive and
+must not be interpreted as causal effects.
 
-- `sales` is volume, not revenue; unit prices are unavailable.
-- Cost, profit, inventory, stockouts, lead times, and margins are unavailable.
-- Promotion and holiday analyses are descriptive/associational, not causal.
+The semantic model, relationships, measures, slicers, hidden-key guidance, pages,
+and bookmarks are documented in [Power BI Model](docs/powerbi_model.md). The file
+is completed locally; publication, gateway configuration, scheduled refresh, and
+Power BI Service operation are not evidenced by this repository.
+
+## Forecast Readiness
+
+The assessment covers all 54 × 33 = 1,782 store–family series. Primary classes are
+Ready 364, Ready with caution 345, Intermittent demand 417, Insufficient history
+144, High volatility 102, and Promotion dependent 410. Independent flags overlap:
+438 series carry at least two risk flags.
+
+These are historical data-readiness rules, not forecast accuracy results or model
+features by default. Thresholds and priority rules are documented in
+[Forecast Readiness](reports/forecast_readiness.md).
+
+## Data Science / Forecasting — Next Phase
+
+The intended future problem is:
+
+- Forecast target: `sales` (Sales Volume).
+- Forecast grain: **Store × Product Family × Day**.
+- Historical actual-sales end: **2017-08-15**.
+- Competition/test horizon: **2017-08-16 through 2017-08-31**.
+- Forecast horizon: **16 days**.
+- Expected predictions: **28,512 rows** (`54 × 33 × 16`).
+
+Temporal validation, baseline evaluation, feature engineering, machine-learning
+forecasting, model evaluation, prediction intervals, and final prediction
+generation are planned work. No forecasting accuracy is claimed. See the
+[Data Science Roadmap](docs/data_science_roadmap.md).
+
+## Validation / Testing
+
+The current repository test suite was rerun on 2026-08-08: **135 tests passed**.
+The reproducible validator checks cleaning, warehouse build, Parquet readability,
+grain, reconciliations, artifacts, readiness flags, Git hygiene, and SQL quality
+dry-run:
+
+```bash
+python -m src.validate_da_project
+```
+
+The latest file-based evidence is in
+[DA Project Validation](reports/da_project_validation.md). PostgreSQL runtime is
+explicitly `NOT RUN`, not PASS or FAIL.
+
+## Known Limitations
+
+- Sales is volume, not revenue; price and financial measures are unavailable.
+- Cost, profit, inventory, stockouts, margins, and lead times are unavailable.
+- Promotion and holiday analyses are descriptive associations/proxy differences,
+  not causal inference.
 - Anomaly flags identify observations for review; they do not prove data errors.
-- 2017 is incomplete after August, so naive full-year comparisons are invalid.
-- PostgreSQL execution and reconciliation have not been runtime-validated.
-- No forecast model, backtest, prediction interval, or approved model artifact
-  exists yet.
+- 2017 actual sales end on August 15 and form only a partial year.
+- PostgreSQL runtime DDL/load/mart/quality validation has not run.
+- Power BI Service publication, gateway, scheduled refresh, and production access
+  are not verified in the repository.
+- No feature dataset, trained forecast model, backtest score, interval, or final
+  submission has been produced in the Data Science phase.
 
-## Forecast readiness
+## Repository Structure
 
-The readiness artifact covers all 54 × 33 store–family series. The primary classes
-are Ready 364, Ready with caution 345, Intermittent demand 417, Insufficient history
-144, High volatility 102, and Promotion dependent 410. Independent risk flags may
-overlap; 438 series carry at least two risks. Thresholds, priority rules, and
-family/store summaries are documented in
-[Forecast readiness](reports/forecast_readiness.md).
+```text
+data/
+  raw/          Local source CSVs (ignored)
+  interim/      Cleaned Parquet artifacts (generated, ignored)
+  processed/    Validated dimensional warehouse Parquet (generated, ignored)
+  features/     Reserved for the future DS phase; currently placeholder only
+docs/           Data dictionary, architecture, Power BI model, DS roadmap
+models/         Reserved for future trained artifacts; currently placeholder only
+notebooks/      Executable DA notebook scripts
+powerbi/        Completed local Power BI report
+reports/        Analytical tables, figures, insights, and validation evidence
+sql/            PostgreSQL DDL, marts, and quality SQL
+src/            Cleaning, warehouse, database, and validation modules
+tests/          Automated contracts and regression tests
+```
 
-## How to reproduce
+## How to Run
 
-Use Python 3.11 or a compatible environment. Raw source CSVs must be supplied
-locally under `data/raw/`; they are not committed.
+Use Python 3.11 or a compatible environment. Supply the competition CSVs under
+`data/raw/` before running the pipeline.
 
 ```bash
 python -m pip install -r requirements.txt
@@ -143,33 +212,30 @@ python notebooks/01_data_audit.py
 python -m src.data.run_cleaning
 python -m src.data.run_warehouse_build
 python notebooks/03_date_dimension.py
-python notebooks/04_business_eda.py
 python notebooks/04a_sales_trend_seasonality.py
+python notebooks/04_business_eda.py
 python notebooks/05_promotion_analysis.py
 python notebooks/06_holiday_analysis.py
 python notebooks/07_transactions_analysis.py
 python notebooks/08_anomaly_review.py
 python notebooks/09_forecast_readiness.py
-python -m pytest -v
+python -m pytest -q
+python -m src.run_sql_quality_checks --dry-run
 ```
 
-Notebook 02 wraps the cleaning workflow and may be used interactively, but the
-module command above is the canonical pipeline entry point. PostgreSQL loading is
-optional and requires a real `.env` created from `.env.example`; consult the
-validation report before treating its outputs as verified.
+Notebook 02 is an interactive wrapper around the canonical cleaning module.
+PostgreSQL loading remains optional and must not be represented as validated until
+a configured database run and reconciliation pass.
 
-## Power BI status
+## Current Project Status
 
-The semantic model and expected relationships are documented, but Power BI is
-**not completed**. No screenshot, `.pbix`, or `.pbit` is provided or claimed. The
-intended model uses `dim_store_date` as the conformed store-day/holiday path with
-single-direction one-to-many relationships. See
-[Power BI model](docs/powerbi_model.md).
+| Phase | Status |
+|---|---|
+| Phase 1 — Data Engineering | **Complete** |
+| Phase 2 — Data Analysis / EDA | **Complete** |
+| Phase 3 — Power BI Dashboard | **Complete** |
+| Phase 4 — Forecast Readiness Assessment | **Complete** |
+| Phase 5 — Forecasting / Data Science | **Not started — next phase** |
 
-## Data Science next step
-
-Define the forecast horizon and temporal splits, establish seasonal-naive and
-intermittent-demand baselines, then evaluate models by readiness group using both
-point-error and interval metrics. Promotion availability must be tested as a future
-feature scenario, and every model should retain fallbacks for insufficient-history
-and intermittent series.
+This task boundary is documentation readiness for the DS handoff. No forecasting
+implementation or trained model is included.

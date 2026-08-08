@@ -4,16 +4,17 @@
 
 **READY WITH WARNINGS**
 
-File-based warehouse và toàn bộ DA regression đã pass, không có lỗi dữ liệu/model
-nghiêm trọng. Chưa đánh dấu `READY` tuyệt đối vì PostgreSQL runtime chưa chạy,
-baseline SHA-256 cố định chưa tồn tại, và một số raw/large report CSV vẫn còn trong
-Git index dù đã được `.gitignore` bao phủ.
+File-based warehouse, toàn bộ DA regression và local Power BI dashboard đã hoàn
+thành, không có lỗi dữ liệu/model nghiêm trọng. PBIX hiện có 8 trang analytical.
+Trạng thái vẫn giữ `READY WITH WARNINGS` cho handoff vì PostgreSQL runtime chưa
+chạy, baseline SHA-256 cố định chưa tồn tại, và một số raw/large report CSV vẫn còn
+trong Git index dù đã được `.gitignore` bao phủ.
 
 Quy ước trạng thái:
 
 - **READY:** mọi kiểm tra quan trọng pass và không còn warning cần xử lý trước khi
   giao/publish.
-- **READY WITH WARNINGS:** model file-based có thể bắt đầu được dựng, nhưng còn
+- **READY WITH WARNINGS:** local dashboard đã hoàn thành/có thể handoff, nhưng còn
   warning vận hành/repository cần được ghi nhận.
 - **NOT READY:** còn lỗi grain, key, reconciliation, artifact, test hoặc semantic
   model quan trọng.
@@ -120,11 +121,13 @@ Không import raw CSV hoặc ba report CSV lớn tái tạo được vào semant
 
 ## Go/no-go decision
 
-**READY WITH WARNINGS** cho bước thiết kế/import Power BI file-based.
+**READY WITH WARNINGS** cho local Power BI dashboard handoff.
 
 Không có critical data failure ngoài PostgreSQL runtime chưa chạy. Trước khi commit
 hoặc publish, cần xử lý Git-index warnings. Nếu nguồn Power BI sẽ là PostgreSQL thay
 vì Parquet, trạng thái cho nguồn đó vẫn là **NOT READY** cho tới khi DDL, load, marts,
 quality runtime và reconciliation thực tế đều pass.
 
-Checklist này không tạo hoặc bắt đầu xây Power BI report.
+Power BI report đã được tạo tại `powerbi/store_sales_analytics.pbix`; checklist
+không tuyên bố Power BI Service deployment hoặc PostgreSQL-backed refresh đã hoàn
+tất.

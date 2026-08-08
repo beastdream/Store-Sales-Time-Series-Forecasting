@@ -1,122 +1,177 @@
 # Project Architecture
 
-## End-to-end flow
+## Current implemented flow
 
 ```text
-data/raw/*.csv
-    │
-    ▼
-Raw loading + audit
-    │
-    ▼
-Cleaning and business-key validation
-    │
-    ▼
-data/interim/*_clean.parquet
-    │
-    ▼
-Dimension, fact, bridge, and store-date construction
-    │
-    ▼
-data/processed/*.parquet
-    │
-    ├──► PostgreSQL DDL/load/marts/quality checks (optional; runtime unvalidated)
-    │
-    ▼
-Business EDA and readiness notebook scripts
-    │
-    ▼
-reports/tables + reports/figures + reports/*.md
-    │
-    ▼
-Power BI semantic model (designed, not implemented)
-    │
-    ▼
-Future DS forecasting pipeline
+Raw Data
+    ↓
+Cleaning / Validation
+    ↓
+Interim Parquet
+    ↓
+Analytical Warehouse / Dimensional Model
+    ↓
+Processed Parquet
+    ↓
+EDA / Analytical Reports
+    ↓
+Power BI Dashboard
+    ↓
+Forecast Readiness Assessment
 ```
 
-The pipeline does not treat a missing store-day observation as zero. The complete
-store-date grid and its observation flags preserve that distinction for analysis
-and Power BI.
+All components above are implemented. The local Power BI report is
+[`powerbi/store_sales_analytics.pbix`](../powerbi/store_sales_analytics.pbix) and
+contains eight analytical pages. PostgreSQL is a separate optional deployment
+branch; its runtime has not been validated.
+
+## Planned Data Science flow
+
+```text
+[Future DS Phase]
+Feature Engineering
+    ↓
+Temporal Backtesting
+    ↓
+Baseline and Forecast Models
+    ↓
+Evaluation and Error Analysis
+    ↓
+Final 16-Day Forecast
+```
+
+Nothing in this planned block is represented as completed. `data/features/` and
+`models/` currently contain placeholders only. The plan is documented in the
+[Data Science Roadmap](data_science_roadmap.md).
 
 ## Stage ownership
 
-| Stage | Responsible code | Inputs | Principal outputs |
-|---|---|---|---|
-| Raw loading | `src/data/load_raw.py` | `data/raw/*.csv` | Typed pandas DataFrames; clear missing-file errors |
-| Raw audit | `notebooks/01_data_audit.py`, `src/data/audit.py` | Raw DataFrames | `reports/data_quality/column_audit.csv`, grain/FK issue files, `audit_summary.md`, cleaning figures |
-| Cleaning | `src/data/run_cleaning.py`; cleaners in `src/data/clean_*.py`; notebook 02 as wrapper | Raw DataFrames | Six validated interim Parquet files and `cleaning_summary.md` |
-| Date dimension | `src/data/build_date_dimension.py`, `notebooks/03_date_dimension.py` | Analysis date bounds | Validated calendar dimension contract |
-| Warehouse build | `src/data/run_warehouse_build.py`; `build_dimensions.py`, `build_store_date_dimension.py`, `build_facts.py`, `build_bridges.py` | Interim Parquet | Eight processed Parquet tables and `warehouse_reconciliation.md` |
-| Store/family EDA | `notebooks/04_business_eda.py` | Processed facts/dimensions | Store/family performance CSVs, findings, ranking/segment figures |
-| Trend/seasonality | `notebooks/04a_sales_trend_seasonality.py` | Processed sales/date tables | Daily/monthly/weekday summaries and seasonal figures |
-| Promotion analysis | `notebooks/05_promotion_analysis.py` | Processed daily sales | Promotion association tables, limitations, figures |
-| Holiday analysis | `notebooks/06_holiday_analysis.py` | Sales plus store-date/holiday context | Holiday association tables, notes, figures |
-| Transaction analysis | `notebooks/07_transactions_analysis.py` | Store-day sales and transactions | Transaction summaries, notes, figures |
-| Anomaly review | `notebooks/08_anomaly_review.py` | Processed facts/context | `sales_anomalies.csv`, notes, review flags |
-| Forecast readiness | `notebooks/09_forecast_readiness.py` | Sales plus EDA/anomaly artifacts | `forecast_readiness.csv` and `forecast_readiness.md` |
-| Consolidated interpretation | Evidence from generated reports | Report tables and Markdown | `reports/business_insights.md`, `reports/da_project_validation.md` |
-| PostgreSQL load | `src/load_to_postgres.py`, `sql/ddl/*.sql` | Processed Parquet | `analytics` schema tables, only when a database is configured |
-| SQL marts/quality | `sql/marts/*.sql`, `sql/data_quality/*.sql`, `src/run_sql_quality_checks.py` | Loaded PostgreSQL tables | SQL marts and quality report; dry-run parsing supported |
-| Power BI | Contract in `docs/powerbi_model.md` | Processed model tables or validated database tables | Future semantic model/report; no current `.pbix`/`.pbit` |
-| Future forecasting | Not yet implemented | Store-family history and future-known features | Future baselines, backtests, forecasts, intervals, model artifacts |
+| Stage | Responsible code/artifact | Inputs | Principal outputs | Status |
+|---|---|---|---|---|
+| Raw loading | `src/data/load_raw.py` | `data/raw/*.csv` | Typed DataFrames | Implemented |
+| Raw audit | `notebooks/01_data_audit.py`, `src/data/audit.py` | Raw tables | Audit CSV/Markdown and cleaning figures | Implemented |
+| Cleaning | `src/data/run_cleaning.py`, `src/data/clean_*.py` | Raw tables | Six interim Parquet files, cleaning summary | Implemented |
+| Warehouse build | `src/data/run_warehouse_build.py`, dimension/fact/bridge builders | Interim Parquet | Eight processed Parquet tables, reconciliation report | Implemented |
+| Business EDA | Notebooks 04/04a–08 | Processed warehouse | Store/family/trend/promotion/holiday/transaction/anomaly tables and figures | Implemented |
+| Forecast readiness | `notebooks/09_forecast_readiness.py` | Historical sales plus DA outputs | Readiness CSV and Markdown | Implemented |
+| Consolidated reporting | `reports/` | Reproducible analytical artifacts | Business insights and validation evidence | Implemented |
+| Power BI | `powerbi/store_sales_analytics.pbix` | Dimensional/report tables | Eight-page interactive local dashboard | Complete |
+| PostgreSQL deployment | `src/load_to_postgres.py`, `sql/` | Processed Parquet | Optional database tables/marts/checks | Code present; runtime NOT RUN |
+| Feature engineering | Future DS work | Historical data and forecast-origin-safe covariates | Planned feature Parquet | Not started |
+| Backtesting/modeling | Future DS work | Planned features | Planned scores/models/forecasts | Not started |
 
-## Cleaning layer
+## Analytical dimensional model
 
-The cleaning entry point reads all raw tables, normalizes dates and types, retains
-observed zero sales, rejects invalid negative measures, aggregates applicable
-holiday records to store-day grain, and checks source grains/FKs before writing.
-Interim files are implementation artifacts and are excluded from Git.
+### `DimDate`
 
-## Warehouse-build layer
+One row per calendar date. It supplies year, quarter, month, weekday, weekend,
+month-boundary, and payday attributes. The dimension extends to 2017-08-31 for the
+test horizon; actual historical Sales Volume ends on 2017-08-15.
 
-The Python warehouse build is the authoritative validated local pipeline. It:
+### `DimStore`
 
-1. Creates stable store and family surrogate keys.
-2. Creates a continuous date dimension over train and test bounds.
-3. Builds the complete date × store dimension and observation flags.
-4. Builds sales at date–store–family grain.
-5. Builds transactions at date–store grain without family multiplication.
-6. Builds a daily oil fact and a geography-aware store-holiday bridge.
-7. Rejects duplicate grains, missing keys, unmapped FKs, or reconciliation drift
-   before writing processed Parquet.
+One row per store, with the business store number, city, state, type, and cluster.
 
-The current reconciliation covers 3,000,888 sales rows, 83,488 transaction rows,
-1,704 dates, 54 stores, 33 families, 92,016 store-dates, and 7,938 holiday-bridge
-rows. See [Warehouse reconciliation](../reports/data_quality/warehouse_reconciliation.md).
+### `DimFamily`
 
-## PostgreSQL branch
+One row per product family. Family describes a category rather than an SKU.
 
-DDL mirrors the processed model, with explicit PK/FK/unique/check constraints.
-Load and quality runners are present, and the SQL quality suite supports a
-connection-free parse mode. However, the current validation environment had no
-PostgreSQL connection variables and no `.env`; therefore runtime DDL execution,
-data load, mart execution, and SQL reconciliation remain unverified. A successful
-Parquet build or SQL dry run must not be presented as a successful database run.
+### `DimStoreDate`
 
-## Analysis and reporting layer
+One row per date × store across the complete calendar-store grid. It is the
+store-date bridge/context dimension and carries:
 
-Notebook files are executable Python scripts, allowing deterministic artifact
-regeneration. Report CSVs are evidence tables; Markdown files interpret those
-tables and state caveats. Large reproducible CSVs and raw data are ignored by Git,
-while durable Markdown documentation remains trackable.
+- holiday/event/work-day flags and aggregated descriptions;
+- `has_sales_observation` and `has_transaction_observation`;
+- the unique `date_store_key` used by store-day facts.
 
-Promotion and holiday comparisons are associative. Nothing in this layer provides
-randomization or controls sufficient for causal inference. Sales metrics represent
-volume rather than revenue, and the absence of cost/profit/inventory prevents
-financial or replenishment conclusions.
+This table allows date and store filters to reach sales and transactions through
+one conformed path, supports local/regional holiday applicability, retains regular
+days, and preserves missing observation separately from observed zero.
 
-## Power BI boundary
+### `FactDailySales`
 
-The intended semantic model consumes conformed dimensions and facts, with
-`dim_store_date` owning store-day/holiday filtering. This repository currently
-documents the model only; it contains no finished report or fabricated screenshot.
-Relationship details are in [Power BI model](powerbi_model.md).
+One observed row per date × store × family. Measures are Sales Volume,
+`onpromotion`, and the binary promotion-active flag. `sales` is not revenue.
 
-## Future forecasting boundary
+### `FactStoreTransactions`
 
-Readiness flags route series to modeling strategies but do not constitute model
-evaluation. The future DS stage must add temporal cross-validation, baselines,
-future-feature availability tests, interval calibration, experiment tracking, and
-versioned artifacts without leaking test/future information into training.
+One observed row per date × store. It has no family grain and must not be expanded
+across 33 families. Family filters therefore must not be assumed to filter this
+fact directly.
 
+### `FactOilPrice`
+
+One row per calendar date, with cleaned oil price, lagged changes, and an imputation
+flag. Its future availability requires a separate leakage/production-realism
+decision in the DS phase.
+
+The holiday-only `BridgeStoreHoliday` remains an audit/detail artifact, not the
+primary filter path, because regular days are absent from it.
+
+## Preferred Power BI relationships
+
+```text
+DimDate ───────┐
+               ▼
+          DimStoreDate ─────► FactDailySales ◄───── DimFamily
+               │
+DimStore ──────┘
+               └────────────► FactStoreTransactions
+
+DimDate ─────────────────────► FactOilPrice
+```
+
+Active relationships use single-direction filtering from the one side to the many
+side:
+
+| One side | Many side | Key |
+|---|---|---|
+| `DimDate` | `DimStoreDate` | `date_key` |
+| `DimStore` | `DimStoreDate` | `store_key` |
+| `DimStoreDate` | `FactDailySales` | `date_store_key` |
+| `DimStoreDate` | `FactStoreTransactions` | `date_store_key` |
+| `DimFamily` | `FactDailySales` | `family_key` |
+| `DimDate` | `FactOilPrice` | `date_key` |
+
+Do not add duplicate active relationships from `DimDate` or `DimStore` directly to
+the two store-day facts. That would introduce multiple filter paths. Do not use
+many-to-many or bidirectional filtering as a workaround.
+
+## Data quality and reconciliation boundary
+
+The local Python warehouse rejects duplicate grain, missing keys, unmapped foreign
+keys, or reconciliation drift before persistence. Current file-based validation
+covers 3,000,888 sales rows, 83,488 transaction rows, 1,704 dates, 54 stores, 33
+families, 92,016 store-dates, and 7,938 holiday-bridge rows.
+
+SQL quality files parse in dry-run mode. PostgreSQL runtime DDL execution, load,
+marts, and SQL reconciliation remain `NOT RUN`; this does not reduce the evidence
+for the completed local Parquet/Power BI work, but it remains a deployment
+limitation.
+
+## Analysis and dashboard boundary
+
+EDA and dashboard measures describe Sales Volume and observed associations. They do
+not provide causal evidence for promotion or holiday impact. The completed PBIX
+contains the following pages:
+
+1. Executive Overview
+2. Sales Trend & Seasonality
+3. Store Performance
+4. Product Family Performance
+5. Promotion Analysis
+6. Holiday & Event Analysis
+7. Transactions & Oil Drivers
+8. Forecast Readiness & Anomalies
+
+Page 8 switches readiness and anomaly views using bookmarks. Full model details are
+in [Power BI Model](powerbi_model.md).
+
+## DS transition boundary
+
+Forecast readiness is historical diagnostic metadata, not a trained model or a
+guarantee of accuracy. The future DS phase must use 16-day walk-forward validation,
+forecast-origin-safe features, baselines, leakage checks, error analysis, and
+versioned model artifacts. No feature generation, training, or prediction is part
+of the completed DA architecture.

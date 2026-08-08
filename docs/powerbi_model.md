@@ -1,62 +1,50 @@
 # Power BI Model
 
-## Status
+## Completed report status
 
-This document is an implementation contract, not evidence of a completed Power BI
-deliverable. No `.pbix`, `.pbit`, screenshot, published workspace, refresh, or
-gateway has been created or validated in this repository. PostgreSQL runtime is
-also unvalidated, so Power BI should initially consume the validated processed
-Parquet tables or a database load that has subsequently passed all checks.
+The completed local report is
+[`powerbi/store_sales_analytics.pbix`](../powerbi/store_sales_analytics.pbix).
+Repository inspection confirms eight 1280 × 720 report pages and two Page 8
+bookmarks. This document describes the completed local model/report; it does not
+claim Power BI Service publication, gateway configuration, scheduled refresh, or
+production access.
 
-## Modeling principle
+PostgreSQL runtime remains `NOT RUN`. The dashboard completion is based on the
+local PBIX and validated file-based analytical model, not a claimed database
+deployment.
 
-`DimStoreDate` is the conformed store-day and holiday-filtering dimension. It
-contains every date × store combination, including non-holidays and store-days
-without fact observations. This avoids using the holiday-only bridge as a slicer
-and preserves “missing observation” separately from an observed zero.
+## Tables loaded into the analytical model
 
-All active relationships are one-to-many with **single-direction** filtering from
-dimensions toward facts. Do not introduce bidirectional or many-to-many paths as a
-shortcut.
+| Table | Grain | Purpose |
+|---|---|---|
+| `DimDate` | date | Calendar filtering and labels |
+| `DimStore` | store | Store, geography, type, and cluster filtering |
+| `DimFamily` | product family | Family filtering |
+| `DimStoreDate` | date × store | Conformed store-day context, holiday/event and observation flags |
+| `FactDailySales` | date × store × family | Sales Volume and promotion observations |
+| `FactStoreTransactions` | date × store | Store-day transaction measures |
+| `FactOilPrice` | date | Oil price and change context |
+| `ForecastReadiness` | store × family | Historical readiness classes, flags, and series metrics |
+| `SalesAnomalies` | anomaly observation | Historical anomaly-review detail |
+| `_Measures` | measure table | Central DAX measure organization |
 
-## Expected tables
+The processed `BridgeStoreHoliday` remains useful for audit/detail outside the
+primary semantic path. `DimStoreDate` is used for dashboard holiday filtering
+because it contains both holiday and regular store-days.
 
-| Power BI table | Physical source | Grain | Role |
+## Important relationships
+
+All active relationships should use one-to-many cardinality and single-direction
+filtering from dimensions to facts:
+
+| One side | Many side | Key | Filter direction |
 |---|---|---|---|
-| `DimDate` | `dim_date.parquet` | date | Calendar slicers |
-| `DimStore` | `dim_store.parquet` | store | Store/geography slicers |
-| `DimFamily` | `dim_family.parquet` | family | Product-family slicers |
-| `DimStoreDate` | `dim_store_date.parquet` | date × store | Conformed store-day, holiday/event and observation flags |
-| `FactDailySales` | `fact_daily_sales.parquet` | date × store × family | Sales-volume and promotion measures |
-| `FactStoreTransactions` | `fact_store_transactions.parquet` | date × store | Transaction measures without family duplication |
-| `FactOilPrice` | `fact_oil_price.parquet` | date | Oil-price context |
-| `BridgeStoreHoliday` | `bridge_store_holiday.parquet` | applicable event date × store | Audit/detail only; optional in report view |
-
-`forecast_readiness.csv` may be loaded as a store–family assessment table for a
-dedicated readiness page, but it is not part of the core star and should not create
-ambiguous active paths. If used, create a unique composite store-family key or a
-dedicated bridge after validating cardinality.
-
-## Active relationships
-
-| One side | Many side | Key | Cardinality and filter |
-|---|---|---|---|
-| `DimDate` | `DimStoreDate` | `date_key` | `1 → *`, single direction |
-| `DimStore` | `DimStoreDate` | `store_key` | `1 → *`, single direction |
-| `DimStoreDate` | `FactDailySales` | `date_store_key` | `1 → *`, single direction |
-| `DimStoreDate` | `FactStoreTransactions` | `date_store_key` | `1 → *`, single direction |
-| `DimFamily` | `FactDailySales` | `family_key` | `1 → *`, single direction |
-| `DimDate` | `FactOilPrice` | `date_key` | `1 → *`, single direction |
-
-Although both store-day facts retain `date_key` and `store_key` for audit/SQL, do
-not create additional active links from `DimDate` or `DimStore` directly to those
-facts. The second path would conflict with the active path through `DimStoreDate`.
-
-`BridgeStoreHoliday` should remain disconnected from the facts in the active
-semantic model, or be hidden/audit-only. Its non-event population is absent, so it
-cannot support a correct holiday-versus-non-holiday slicer.
-
-## Intended filter flow
+| `DimDate` | `DimStoreDate` | `date_key` | `DimDate → DimStoreDate` |
+| `DimStore` | `DimStoreDate` | `store_key` | `DimStore → DimStoreDate` |
+| `DimStoreDate` | `FactDailySales` | `date_store_key` | `DimStoreDate → FactDailySales` |
+| `DimStoreDate` | `FactStoreTransactions` | `date_store_key` | `DimStoreDate → FactStoreTransactions` |
+| `DimFamily` | `FactDailySales` | `family_key` | `DimFamily → FactDailySales` |
+| `DimDate` | `FactOilPrice` | `date_key` | `DimDate → FactOilPrice` |
 
 ```text
 DimDate ───────┐
@@ -69,48 +57,124 @@ DimStore ──────┘
 DimDate ─────────────────────► FactOilPrice
 ```
 
-Examples:
+The retained `date_key` and `store_key` columns in facts are audit keys, not a
+reason to create duplicate active paths around `DimStoreDate`. Family filtering
+must not be assumed to filter `FactStoreTransactions`, because transactions do not
+exist at family grain.
 
-- A date filter flows from `DimDate` through `DimStoreDate` to both store-day facts.
-- A city/store filter flows from `DimStore` through `DimStoreDate` to both facts.
-- A family filter affects sales only; it must not multiply or filter transactions
-  as though transactions existed at family grain.
-- Holiday and observation slicers come from `DimStoreDate`.
+## Grain and observation semantics
 
-## Slicer ownership
+- `FactDailySales`: one observed date–store–family row.
+- `FactStoreTransactions`: one observed date–store row; never repeated by family.
+- `FactOilPrice`: one calendar-date row.
+- `DimStoreDate`: complete date–store grid.
+- `ForecastReadiness`: one store–family row.
+- `SalesAnomalies`: one review record at its documented analysis level.
 
-| Slicer | Use | Avoid |
-|---|---|---|
-| Date/year/quarter/month/weekday/payday | `DimDate` | Fact date columns |
-| Store/city/state/type/cluster | `DimStore` | Fact store keys |
-| Product family | `DimFamily` | Fact family key |
-| Holiday/non-holiday | `DimStoreDate[is_holiday]` | Holiday-only bridge |
-| Event/work-day | `DimStoreDate[is_event]`, `[is_work_day]` | Inferred fact flags |
-| Observation availability | `DimStoreDate[has_sales_observation]`, `[has_transaction_observation]` | Treating missing rows as zero |
+`has_sales_observation = 0` and `has_transaction_observation = 0` mean a source
+row is absent; they do not mean an observed measure of zero. Dashboard labels use
+2017-08-15 as the final actual-sales date even though `DimDate` extends to the test
+horizon on 2017-08-31.
 
-## Measure caveats
+## Important measures
 
-- Name sales measures as sales volume; do not label them revenue.
-- Do not create profit or inventory measures because the required source fields do
-  not exist.
-- Sum transactions only from `FactStoreTransactions` at store-day grain.
-- A missing fact row is not zero. If a presentation measure deliberately replaces
-  blank with zero, name and document it separately from the base measure.
-- Promotion comparisons are associations, not causal uplift estimates.
+The report organizes reusable measures in `_Measures`. Important measure groups
+visible in the PBIX metadata include:
 
-## Implementation checklist
+- Core volume: `Total Sales Volume`, `Average Daily Sales`, `Sales 7D Moving
+  Average`, `Sales 28D Moving Average`, `YoY Growth %`.
+- Coverage: `Active Stores`, `Active Families`, `Zero-Sales Observation Rate`.
+- Transactions: `Total Transactions`, `Average Daily Transactions`, `Sales Volume
+  per Transaction`.
+- Store momentum: `Recent 90D Sales`, `Previous 90D Sales`, `Recent 90D Growth %`.
+- Promotion comparison: `Promotion-Active Observation Rate`, `Promotion-Active
+  Sales Volume`, `Nonpromotion Sales Volume`, and `Promotion Difference Proxy %`.
+- Holiday comparison: holiday/regular Sales Volume and average-store-day measures,
+  plus `Holiday Difference Proxy %`.
+- Oil context: latest/average price, 1-day and 7-day changes, and imputed-day count.
+- Readiness: `Total Series`, `Ready Series`, `Ready Series %`, intermittent,
+  promotion-dependent and high-volatility series counts, and FR series metrics.
+- Anomalies: count, actual Sales Volume, expected Sales Volume, and baseline bias.
 
-1. Load the seven core tables; optionally load `BridgeStoreHoliday` for audit.
-2. Mark `DimDate[full_date]` as the date table.
-3. Verify uniqueness on every relationship’s one side.
-4. Create only the six active relationships listed above.
-5. Set every cross-filter direction to Single.
-6. Hide technical keys while retaining them for relationship/audit use.
-7. Confirm holiday slicers expose both 0 and 1 and do not drop non-event dates.
-8. Reconcile total sales volume and transactions to the warehouse report.
-9. Validate blanks versus observed zeros using the two observation flags.
-10. Record refresh source, credentials handling, model version, and validation
-    evidence when an actual Power BI file is created.
+Names containing “Difference Proxy” represent descriptive comparisons, not causal
+uplift. Sales measures represent volume, not revenue or profit.
 
-The underlying validated counts and a more detailed rationale are available in the
-existing [Power BI model design](../reports/data_quality/powerbi_model_design.md).
+## Technical keys and summarization
+
+Technical and surrogate keys should not be summarized. They should normally be
+hidden from report users after relationships are configured, including:
+
+- `date_key`, `store_key`, `family_key`, `date_store_key`, and `sales_id`;
+- composite/report join helpers and technical anomaly identifiers where not needed
+  for drill-through;
+- raw numeric keys retained only for model relationships or audit.
+
+Business identifiers such as store number may remain visible as categorical labels,
+but their default summarization must be **Do not summarize**.
+
+## Slicers and interactive filtering
+
+The report includes interactive slicers appropriate to each view. Ownership should
+remain consistent:
+
+| Filter | Source |
+|---|---|
+| Date/year/month/weekday | `DimDate` |
+| Store/state/city/type/cluster | `DimStore` |
+| Product family | `DimFamily` |
+| Holiday/event/work-day | `DimStoreDate` |
+| Observation availability | `DimStoreDate` |
+| Readiness class | `ForecastReadiness` |
+| Anomaly level/method/review category | `SalesAnomalies` |
+
+Date, family, state, store type, and readiness/anomaly controls support interactive
+filtering and drillable analytical views. Fact keys should not be exposed as user
+slicers.
+
+## Report page structure
+
+1. **Executive Overview** — core Sales Volume, transactions, activity, trend, and
+   store/family overview.
+2. **Sales Trend & Seasonality** — moving averages, month/weekday patterns, and
+   partial-year-aware trend views.
+3. **Store Performance** — store rankings, recent 90-day momentum, transaction
+   context, and store attributes.
+4. **Product Family Performance** — contribution, variability, intermittency, and
+   promotion-active comparisons by family.
+5. **Promotion Analysis** — descriptive promotion-active versus nonpromotion
+   comparisons and proxy differences.
+6. **Holiday & Event Analysis** — holiday/regular store-day comparisons, event
+   types/locales, and time patterns.
+7. **Transactions & Oil Drivers** — transactions, Sales Volume per transaction,
+   oil context, and descriptive driver views.
+8. **Forecast Readiness & Anomalies** — two bookmark-controlled analytical views.
+
+## Page 8 bookmark navigation
+
+The Page 8 bookmark navigator switches between the two groups verified in the PBIX:
+
+```text
+Forecast Readiness bookmark
+    → shows FR_Group
+    → hides AN_Group
+
+Sales Anomalies bookmark
+    → hides FR_Group
+    → shows AN_Group
+```
+
+Both bookmarks target the `Forecast Readiness & Anomalies` page. Bookmark state
+inspection confirms that the two visual groups invert their `isHidden` state.
+
+## Model cautions
+
+- Keys must use **Do not summarize** and normally remain hidden.
+- Family filters must not be presented as if transactions exist by family.
+- Missing observations must not be silently converted to observed zero.
+- Promotion and holiday visuals show descriptive association/proxy difference,
+  not causal effect.
+- Historical actual Sales Volume ends on 2017-08-15; 2017 is a partial year.
+- Forecast-readiness classes and anomaly outputs are historical diagnostics, not
+  forecast accuracy or automatically valid model features.
+- Power BI Service refresh, credentials, gateway, and access controls remain an
+  operational follow-up outside the local PBIX evidence.

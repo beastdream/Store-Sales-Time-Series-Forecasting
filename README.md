@@ -229,13 +229,13 @@ a configured database run and reconciliation pass.
 
 ## Current Project Status
 
-| Phase | Status |
-|---|---|
-| Phase 1 — Data Engineering | **Complete** |
-| Phase 2 — Data Analysis / EDA | **Complete** |
-| Phase 3 — Power BI Dashboard | **Complete** |
-| Phase 4 — Forecast Readiness Assessment | **Complete** |
-| Phase 5 — Forecasting / Data Science | **Not started — next phase** |
+| Phase                                   | Status                       |
+| --------------------------------------- | ---------------------------- |
+| Phase 1 — Data Engineering              | **Complete**                 |
+| Phase 2 — Data Analysis / EDA           | **Complete**                 |
+| Phase 3 — Power BI Dashboard            | **Complete**                 |
+| Phase 4 — Forecast Readiness Assessment | **Complete**                 |
+| Phase 5 — Forecasting / Data Science    | **Not started — next phase** |
 
 This task boundary is documentation readiness for the DS handoff. No forecasting
 implementation or trained model is included.

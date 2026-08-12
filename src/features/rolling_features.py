@@ -40,9 +40,10 @@ def add_sales_rolling_features(
     """Add rolling statistics computed strictly from ``sales.shift(1)``.
 
     Missing observations stay missing and invalidate a full-window statistic;
-    they are never treated as zero. Pass one ``forecast_origin`` for a 16-day
-    backtest/test horizon to mask every actual target after that cutoff before
-    the shift. Consequently, validation actuals cannot update later features.
+    they are never treated as zero. Training uses the dense calendar frame with
+    no origin mask. The optional mask supports D+1 audits only. Multi-step
+    inference uses recursive_forecast, where later windows contain historical
+    actuals and earlier predictions but never actual future targets.
     """
     prepared = _prepare_frame(frame, forecast_origin)
     prepared["_shifted_sales"] = prepared.groupby(
@@ -91,5 +92,5 @@ def add_horizon_safe_sales_rolling_features(
     frame: pd.DataFrame,
     forecast_origin: object,
 ) -> pd.DataFrame:
-    """Explicit multi-step wrapper requiring one fixed forecast origin."""
+    """Mask post-origin targets for a D+1 rolling-feature audit."""
     return add_sales_rolling_features(frame, forecast_origin=forecast_origin)

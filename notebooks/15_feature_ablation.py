@@ -2,7 +2,7 @@
 # # Controlled Global LightGBM Feature Ablation
 #
 # Every LightGBM experiment uses the same four 16-day folds, fixed parameters,
-# 250 boosting rounds, log target and fixed-origin inference. M7 is gated off:
+# 250 boosting rounds, log target and recursive calendar-day inference. M7 is gated off:
 # the current oil interpolation reads future values and has not passed a causal
 # availability scenario. No final test target is loaded or used.
 
@@ -26,7 +26,7 @@ from src.modeling.ablation import (
     summarize_ablation,
 )
 from src.modeling.evaluate import score_predictions
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import make_rolling_splits
 from src.modeling.train_global import (
     DEFAULT_NUM_BOOST_ROUND,
@@ -34,7 +34,6 @@ from src.modeling.train_global import (
     MODEL_NAME,
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 
@@ -102,9 +101,9 @@ def run_experiments() -> pd.DataFrame:
             if completed.any():
                 print(f"{experiment} fold {fold}: reused checkpoint")
                 continue
-            horizon = build_horizon_safe_features(
-                known, split.train_end, split.validation_start, split.validation_end
-            )
+            horizon = known.loc[known["date"].between(
+                split.validation_start, split.validation_end
+            )].copy()
             if len(horizon) != expected_rows:
                 raise AssertionError(f"{experiment} fold {fold}: incomplete horizon")
             model, metadata = train_global_model(
@@ -116,7 +115,11 @@ def run_experiments() -> pd.DataFrame:
             )
             if metadata["parameters"] != DEFAULT_PARAMETERS:
                 raise AssertionError("ablation parameters changed across experiments")
-            metrics = score_predictions(horizon, predict_sales(model, horizon))
+            predictions = recursive_forecast(
+                model, known, split.train_end,
+                split.validation_start, split.validation_end,
+            )
+            metrics = score_predictions(horizon, predictions)
             row = pd.DataFrame(
                 [{
                     "experiment": experiment,

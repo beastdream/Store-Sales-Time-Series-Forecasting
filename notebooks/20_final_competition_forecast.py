@@ -2,7 +2,8 @@
 # # Final Competition Forecast
 #
 # This entrypoint retrains only the validation-selected T2 global LightGBM on all
-# actual sales through 2017-08-15. Final test covariates are used only for the
+# actual sales through 2017-08-15. The final horizon is generated recursively,
+# feeding prior predictions into later calendar-day lag/rolling features. Final test covariates are used only for the
 # 2017-08-16 through 2017-08-31 forecast, never for model/parameter selection.
 # The shadow intermittent router is not used because no origin-causal routing rule
 # has yet been validated.

@@ -41,6 +41,13 @@ def _prepare_frame(
 
     prepared["_original_order"] = range(len(prepared))
     prepared = prepared.sort_values([*SERIES_COLUMNS, DATE_COLUMN], kind="stable")
+    day_steps = prepared.groupby(
+        SERIES_COLUMNS, observed=True, sort=False
+    )[DATE_COLUMN].diff().dropna()
+    if not day_steps.eq(pd.Timedelta(days=1)).all():
+        raise ValueError(
+            "frame must be calendar-dense within every store-family series"
+        )
     prepared["_feature_sales"] = prepared[TARGET_COLUMN]
     if forecast_origin is not None:
         cutoff = pd.Timestamp(forecast_origin).normalize()
@@ -58,12 +65,11 @@ def add_sales_lag_features(
 ) -> pd.DataFrame:
     """Add store-family sales lags without reading the current row's target.
 
-    For ordinary training rows, omit ``forecast_origin`` and each row uses only
-    earlier rows in its series. For a multi-step validation/test horizon, pass
-    the single forecast cutoff. All targets after that cutoff are masked before
-    shifting, so actual horizon targets can never enter later horizon features.
-    This implements the horizon-safe historical-features strategy; unavailable
-    short lags later in the horizon remain missing rather than being fabricated.
+    The input must use one row per calendar date for every series, making lag N
+    exactly date t-N rather than the Nth previous observed row. For training,
+    omit forecast_origin. The optional mask is retained for D+1 audits only;
+    multi-step inference must use recursive_forecast so prior predictions update
+    later lag values without exposing actual future targets.
     """
     lag_values = _validate_lags(lags)
     prepared = _prepare_frame(frame, forecast_origin)
@@ -84,5 +90,5 @@ def add_horizon_safe_sales_lags(
     *,
     lags: Iterable[int] = DEFAULT_LAGS,
 ) -> pd.DataFrame:
-    """Explicit multi-step wrapper requiring one fixed forecast origin."""
+    """Mask post-origin targets for a D+1 feature audit."""
     return add_sales_lag_features(frame, lags=lags, forecast_origin=forecast_origin)

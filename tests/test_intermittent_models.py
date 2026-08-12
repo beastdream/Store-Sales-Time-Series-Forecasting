@@ -9,11 +9,11 @@ from src.modeling.intermittent import (
     summarize_intermittent_scores,
     train_two_stage_models,
 )
+from src.modeling.recursive import recursive_forecast
 from src.modeling.train_global import (
     FEATURE_COLUMNS,
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
 )
 
 
@@ -100,12 +100,6 @@ def test_two_stage_global_prediction_is_complete_and_nonnegative() -> None:
     known = add_known_features(sales, stores, holidays)
     causal = build_causal_training_features(known)
     origin = pd.Timestamp("2024-01-19")
-    horizon = build_horizon_safe_features(
-        known,
-        origin,
-        origin + pd.Timedelta(days=1),
-        origin + pd.Timedelta(days=16),
-    )
     parameters = {
         "learning_rate": 0.05, "num_leaves": 8, "verbosity": -1,
         "seed": 42, "num_threads": 1,
@@ -113,7 +107,16 @@ def test_two_stage_global_prediction_is_complete_and_nonnegative() -> None:
     occurrence, magnitude = train_two_stage_models(
         causal, origin, parameters=parameters, num_boost_round=5, feature_columns=FEATURE_COLUMNS
     )
-    prediction = predict_two_stage(occurrence, magnitude, horizon)
+    prediction = recursive_forecast(
+        (occurrence, magnitude),
+        known,
+        origin,
+        origin + pd.Timedelta(days=1),
+        origin + pd.Timedelta(days=16),
+        prediction_function=lambda models, features: predict_two_stage(
+            models[0], models[1], features
+        ),
+    )
 
     assert len(prediction) == 32
     assert prediction["prediction"].ge(0).all()

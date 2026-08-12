@@ -113,8 +113,9 @@ def train_two_stage_models(
 ) -> tuple[lgb.Booster, lgb.Booster]:
     """Train global occurrence and positive-magnitude models without readiness labels."""
     cutoff = pd.Timestamp(training_cutoff).normalize()
-    training = feature_frame.loc[feature_frame["date"].le(cutoff)].copy()
-    if training.empty or training["sales"].isna().any() or training["sales"].lt(0).any():
+    eligible = feature_frame["date"].le(cutoff)
+    training = feature_frame.loc[eligible & feature_frame["sales"].notna()].copy()
+    if training.empty or training["sales"].lt(0).any():
         raise ValueError("two-stage training sales must be complete and nonnegative")
     categorical = [column for column in CATEGORICAL_FEATURES if column in feature_columns]
 

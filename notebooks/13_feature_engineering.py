@@ -2,9 +2,8 @@
 # # Audited Feature Engineering for Global Forecasting
 #
 # This notebook entrypoint demonstrates the reusable feature builders. It writes
-# no full feature dataset. Target-history features for a forecast horizon are
-# always rebuilt from one fixed origin; actual targets after that origin are
-# masked before lag and rolling calculations.
+# no full feature dataset. It audits D+1 features; multi-step construction belongs
+# to the recursive forecaster because later days require prior model predictions.
 
 # %%
 from pathlib import Path
@@ -28,7 +27,7 @@ def build_validation_sample(days_of_context: int = 400) -> pd.DataFrame:
     """Build a small real-data horizon sample without persisting it."""
     train = load_train()
     validation_end = train["date"].max().normalize()
-    validation_start = validation_end - pd.Timedelta(days=15)
+    validation_start = validation_end
     origin = validation_start - pd.Timedelta(days=1)
     context_start = origin - pd.Timedelta(days=days_of_context)
     sample = train.loc[train["date"].between(context_start, validation_end)]

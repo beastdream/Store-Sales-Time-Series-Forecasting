@@ -3,7 +3,7 @@
 #
 # This is a small, reproducible search over three candidates plus the validated
 # untuned control. Every candidate uses the same four rolling 16-day folds, M6
-# features, log target, fixed-origin inference, seeds and 250 boosting rounds.
+# features, log target, recursive calendar-day inference, seeds and 250 boosting rounds.
 # The final competition test is never loaded. Selection uses mean four-fold RMSLE,
 # never the best individual fold.
 
@@ -24,14 +24,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import MODELS_DIR, REPORTS_DIR
 from src.data.load_raw import load_holidays, load_stores, load_train
 from src.modeling.evaluate import score_predictions
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import make_rolling_splits
 from src.modeling.train_global import (
     DEFAULT_NUM_BOOST_ROUND,
     FEATURE_COLUMNS,
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 from src.modeling.tuning import (
@@ -94,9 +93,9 @@ def run_search() -> tuple[pd.DataFrame, pd.DataFrame]:
             if completed.any():
                 print(f"{experiment} fold {fold}: reused checkpoint")
                 continue
-            horizon = build_horizon_safe_features(
-                known, split.train_end, split.validation_start, split.validation_end
-            )
+            horizon = known.loc[known["date"].between(
+                split.validation_start, split.validation_end
+            )].copy()
             if len(horizon) != expected_rows:
                 raise AssertionError(f"{experiment} fold {fold}: incomplete horizon")
             model, metadata = train_global_model(
@@ -108,7 +107,11 @@ def run_search() -> tuple[pd.DataFrame, pd.DataFrame]:
             )
             if metadata["feature_list"] != FEATURE_COLUMNS:
                 raise AssertionError("feature set changed during tuning")
-            metrics = score_predictions(horizon, predict_sales(model, horizon))
+            predictions = recursive_forecast(
+                model, known, split.train_end,
+                split.validation_start, split.validation_end,
+            )
+            metrics = score_predictions(horizon, predictions)
             row = pd.DataFrame(
                 [{
                     "experiment": experiment,

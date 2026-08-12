@@ -1,6 +1,6 @@
 """Leakage-aware feature infrastructure for store-family forecasting."""
 
-from src.features.build_forecast_frame import build_forecast_frame
+from src.features.build_forecast_frame import build_dense_known_frame, build_forecast_frame
 from src.features.lag_features import (
     DEFAULT_LAGS,
     add_horizon_safe_sales_lags,
@@ -20,4 +20,5 @@ __all__ = [
     "add_sales_lag_features",
     "add_sales_rolling_features",
     "build_forecast_frame",
+    "build_dense_known_frame",
 ]

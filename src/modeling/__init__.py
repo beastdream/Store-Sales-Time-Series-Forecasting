@@ -3,6 +3,7 @@
 from src.modeling.baselines import BASELINE_MODELS, forecast_baseline
 from src.modeling.metrics import mae, rmsle, wape
 from src.modeling.predict import load_model, predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import TemporalSplit, make_rolling_splits
 from src.modeling.train_global import MODEL_NAME, train_global_model
 
@@ -16,6 +17,7 @@ __all__ = [
     "load_model",
     "predict_sales",
     "rmsle",
+    "recursive_forecast",
     "train_global_model",
     "wape",
 ]

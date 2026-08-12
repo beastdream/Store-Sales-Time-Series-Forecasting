@@ -18,7 +18,7 @@ Processed Parquet
               ↓
 Forecast-origin-safe feature builders
               ↓
-Four rolling 16-day temporal folds
+Four rolling 16-day temporal folds (saved results require rerun)
               ↓
 Baselines → global LightGBM → ablation → controlled tuning
               ↓
@@ -26,9 +26,9 @@ OOF error/readiness analysis
     ├─→ Intermittent-demand shadow experiments
     └─→ Split-conformal interval evaluation
               ↓
-Full-history final global model
+Full-history final global model (regeneration pending)
               ↓
-Validated 16-day point submission
+16-day point submission (existing artifact is legacy)
 ~~~
 
 PostgreSQL is an optional deployment branch. DDL, loading, marts, and quality SQL
@@ -46,15 +46,15 @@ locally; Power BI Service operations are not validated.
 | Power BI | powerbi/store_sales_analytics.pbix | Eight-page local report | Implemented locally |
 | Forecast readiness | notebook 09 | 1,782-series readiness diagnostics | Implemented |
 | Forecast contract | notebook 10 | Verified target, grain, horizon, availability | Implemented |
-| Temporal splits and baselines | src/modeling/splits.py, baselines.py, notebook 11 | Four-fold baseline leaderboard | Implemented |
+| Temporal splits and baselines | src/modeling/splits.py, baselines.py, notebook 11 | Four-fold baseline leaderboard | Code implemented; saved results predate recursive refactor |
 | Forecast features | src/features/, notebook 13 | In-memory causal feature frames | Implemented; persisted snapshots not implemented |
-| Global model | train_global.py, predict.py, notebook 14 | Backtest, model, comparison | Implemented |
-| Feature ablation | ablation.py, notebook 15 | Controlled group effects | Implemented |
-| Parameter selection | tuning.py, notebook 16 | Chosen T2 config and tuned model | Implemented |
-| Error segmentation | error_analysis.py, notebook 17 | OOF and segment reports | Implemented |
-| Specialized models | intermittent.py, notebook 18 | Intermittent cohort comparison | Evaluated; routing shadow-only |
-| Prediction intervals | uncertainty.py, notebook 19 | Temporally calibrated interval evaluation | Evaluated prototype |
-| Final forecast | final_forecast.py, notebook 20 | Final model, metadata, 28,512-row submission | Implemented and validated |
+| Global model | train_global.py, recursive.py, notebook 14 | Recursive backtest, model, comparison | Code implemented; rerun required |
+| Feature ablation | ablation.py, notebook 15 | Controlled group effects | Code implemented; legacy results require rerun |
+| Parameter selection | tuning.py, notebook 16 | Chosen config and tuned model | Code implemented; selection must be rerun |
+| Error segmentation | error_analysis.py, notebook 17 | OOF and segment reports | Code implemented; legacy reports require rerun |
+| Specialized models | intermittent.py, notebook 18 | Intermittent cohort comparison | Code implemented; routing shadow-only and legacy results require rerun |
+| Prediction intervals | uncertainty.py, notebook 19 | Temporally calibrated interval evaluation | Evaluated prototype is legacy; rerun required |
+| Final forecast | final_forecast.py, notebook 20 | Final model, metadata, 28,512-row submission | Recursive code implemented; existing artifact legacy |
 | PostgreSQL deployment | src/load_to_postgres.py, sql/ | Optional database warehouse | Code present; runtime NOT RUN |
 
 ## Forecast modeling boundary
@@ -63,9 +63,10 @@ The forecasting target is daily Sales Volume at date × store × family grain. A
 model comparisons use the same four rolling 16-day folds. Final selection uses
 mean fold RMSLE and its variation, never the best fold or final test targets.
 
-The selected strategy is a global LightGBM with a log1p target, 250 trees, and the
-validation-selected T2 parameters. It is retrained on actual history through
-2017-08-15 and forecasts the complete 2017-08-16 to 2017-08-31 test grid.
+The previous strategy selected a global LightGBM with a log1p target and 250
+trees. That selection and final artifact predate corrected recursive semantics.
+The experiment chain must be rerun before a configuration is selected for the
+corrected implementation.
 
 Feature construction is performed in memory. data/features/ is retained for
 optional future snapshots; the architecture does not claim train_features or
@@ -75,8 +76,8 @@ test_features files.
 
 Training rows use ordinary shifted causal features. A validation or final horizon
 uses a single forecast origin: post-origin targets are masked, seasonal lag
-references resolve to observed pre-origin dates, and rolling values are frozen
-from the origin snapshot.
+references use exact calendar dates. Each prior prediction is inserted into a
+private history before later lag and rolling features are recomputed.
 
 Directly allowed:
 
@@ -100,6 +101,10 @@ Readiness labels may be joined after prediction for diagnosis. Their current
 full-history construction does not authorize production routing.
 
 ## Modeling artifacts and consumers
+
+All persisted scores, models, OOF predictions, intervals, and the final
+submission in this table predate the recursive semantics correction. They are
+preserved as legacy artifacts and require ordered regeneration.
 
 | Artifact | Role |
 |---|---|

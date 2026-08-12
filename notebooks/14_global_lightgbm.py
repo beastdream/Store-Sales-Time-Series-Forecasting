@@ -3,7 +3,8 @@
 #
 # One model is trained across every store-family series. The target is
 # `log1p(sales)` and predictions are transformed with `expm1` then clipped at
-# zero. This is an untuned initial configuration. The final Kaggle test set is
+# zero. Each 16-day fold is predicted recursively: an earlier prediction updates
+# later lag and rolling features. This is an untuned initial configuration. The final Kaggle test set is
 # never used for parameter selection or backtest evaluation.
 
 # %%
@@ -27,7 +28,7 @@ from src.modeling.evaluate import (
     score_predictions,
     summarize_model_scores,
 )
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import make_rolling_splits
 from src.modeling.train_global import (
     DEFAULT_NUM_BOOST_ROUND,
@@ -35,7 +36,6 @@ from src.modeling.train_global import (
     MODEL_NAME,
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 
@@ -64,16 +64,16 @@ def run_backtest(
     fold_metadata: list[dict[str, object]] = []
 
     for fold, split in enumerate(splits, start=1):
-        horizon = build_horizon_safe_features(
-            known_frame,
-            split.train_end,
-            split.validation_start,
-            split.validation_end,
-        )
+        horizon = known_frame.loc[known_frame["date"].between(
+            split.validation_start, split.validation_end
+        )].copy()
         if len(horizon) != expected_rows:
             raise AssertionError(f"fold {fold}: incomplete validation horizon")
         model, metadata = train_global_model(causal_features, split.train_end)
-        predictions = predict_sales(model, horizon)
+        predictions = recursive_forecast(
+            model, known_frame, split.train_end,
+            split.validation_start, split.validation_end,
+        )
         metrics = score_predictions(horizon, predictions)
         rows.append(
             {

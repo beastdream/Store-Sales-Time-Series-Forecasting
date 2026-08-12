@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.features.lag_features import DEFAULT_LAGS, add_sales_lag_features
 from src.features.rolling_features import (
@@ -122,6 +123,16 @@ def test_missing_observation_is_not_treated_as_zero() -> None:
     assert pd.isna(result.loc[29, "rolling_zero_rate_28"])
 
 
+def test_sparse_rows_are_rejected_instead_of_redefining_calendar_lags() -> None:
+    frame = _series(periods=15).query(
+        "store_nbr == 1 and family == 'A'"
+    ).reset_index(drop=True)
+    sparse = frame.drop(index=7).reset_index(drop=True)
+
+    with pytest.raises(ValueError, match="calendar-dense"):
+        add_sales_lag_features(sparse, lags=[7])
+
+
 def test_future_target_changes_cannot_affect_any_horizon_feature() -> None:
     frame = _series(periods=56).query("store_nbr == 1 and family == 'A'").reset_index(drop=True)
     cutoff = pd.Timestamp("2023-02-09")
@@ -138,12 +149,12 @@ def test_future_target_changes_cannot_affect_any_horizon_feature() -> None:
         *ROLLING_FEATURE_COLUMNS,
     ]
 
-    pd.testing.assert_frame_equal(
-        original.loc[future_mask, feature_columns].reset_index(drop=True),
-        changed.loc[future_mask, feature_columns].reset_index(drop=True),
+    first_future = frame.index[future_mask][0]
+    pd.testing.assert_series_equal(
+        original.loc[first_future, feature_columns],
+        changed.loc[first_future, feature_columns],
     )
-    assert original.loc[future_mask, "sales_lag_1"].iloc[0] == 40.0
-    assert original.loc[future_mask, "sales_lag_1"].iloc[1:].isna().all()
+    assert original.loc[first_future, "sales_lag_1"] == 40.0
 
 
 def test_horizon_safe_features_preserve_input_grain_and_row_count() -> None:

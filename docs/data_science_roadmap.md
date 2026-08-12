@@ -83,7 +83,10 @@ reduced set excluding holidays was recommended for a confirmation experiment but
 was not separately backtested; consequently it did not replace the validated M6
 feature configuration used in tuning and final training.
 
-## 6. Selected machine-learning model — implemented
+## 6. Previous selected machine-learning model — legacy, rerun required
+
+The following values are preserved from the previous fixed/frozen multi-step
+semantics. They must not be treated as recursive-pipeline results.
 
 A controlled four-candidate search selected T2_moderate_capacity:
 
@@ -142,9 +145,9 @@ The interval method is leakage-controlled and evaluated, but uneven segment
 coverage prevents a production-ready claim. Final submission contains point
 forecasts only.
 
-## 10. Final forecast generation — implemented
+## 10. Final forecast generation — recursive code implemented, artifacts legacy
 
-The validation-selected global strategy is retrained on all 3,000,888 historical
+The existing final artifact retrained the previously selected global strategy on all 3,000,888 historical
 rows through 2017-08-15. The final output covers 2017-08-16 through 2017-08-31.
 Before publication, the pipeline validates exact schema, 28,512 rows, unique and
 ordered IDs, complete date/store/family coverage, finite numeric predictions, and
@@ -157,7 +160,10 @@ Artifacts:
 - models/final_global_lightgbm_metadata.json
 - reports/modeling/final_submission.csv
 
-No final competition score is claimed because target values are unavailable.
+It predates the recursive correction and was not overwritten. No final
+competition score is claimed because target values are unavailable. The complete
+backtest, selection, diagnostic, and final-generation chain must be rerun before
+a replacement artifact is published.
 
 ## 11. Exact reproduction commands
 

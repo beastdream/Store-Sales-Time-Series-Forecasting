@@ -3,7 +3,8 @@
 #
 # ForecastReadiness identifies the post-hoc evaluation cohort only. It is never
 # merged into training features. Croston-family baselines use pre-origin history;
-# the two-stage strategy trains globally on all series and is evaluated on the
+# the two-stage strategy trains globally on all series, predicts recursively,
+# and is evaluated on the
 # intermittent cohort only after prediction.
 
 # %%
@@ -30,10 +31,10 @@ from src.modeling.intermittent import (
     train_two_stage_models,
 )
 from src.modeling.splits import make_rolling_splits
+from src.modeling.recursive import recursive_forecast
 from src.modeling.train_global import (
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
 )
 
 
@@ -116,9 +117,9 @@ def reproduce_two_stage_oof(
     splits = make_rolling_splits(train["date"].max(), HORIZON_DAYS, N_FOLDS)
     rows = []
     for fold, split in enumerate(splits, start=1):
-        horizon = build_horizon_safe_features(
-            known, split.train_end, split.validation_start, split.validation_end
-        )
+        horizon = known.loc[known["date"].between(
+            split.validation_start, split.validation_end
+        )].copy()
         occurrence, magnitude = train_two_stage_models(
             causal,
             split.train_end,
@@ -126,7 +127,16 @@ def reproduce_two_stage_oof(
             num_boost_round=config["num_boost_round"],
             feature_columns=config["feature_list"],
         )
-        prediction = predict_two_stage(occurrence, magnitude, horizon)
+        prediction = recursive_forecast(
+            (occurrence, magnitude),
+            known,
+            split.train_end,
+            split.validation_start,
+            split.validation_end,
+            prediction_function=lambda models, features: predict_two_stage(
+                models[0], models[1], features
+            ),
+        )
         intermittent = horizon[["date", "store_nbr", "family", "sales"]].merge(
             prediction,
             on=["date", "store_nbr", "family"],

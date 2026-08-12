@@ -3,11 +3,10 @@
 import numpy as np
 import pandas as pd
 
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.train_global import (
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 
@@ -59,20 +58,14 @@ def build_final_model_inputs(
     stores: pd.DataFrame,
     holidays: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build causal training features and fixed-origin test-horizon features."""
+    """Build dense causal training features and known full-horizon rows."""
     historical = train.copy()
     future = test.copy()
     future["sales"] = pd.Series(np.nan, index=future.index, dtype="float64")
     combined = pd.concat([historical, future], ignore_index=True, sort=False)
     known = add_known_features(combined, stores, holidays)
     causal_training = build_causal_training_features(known)
-    horizon = build_horizon_safe_features(
-        known,
-        FINAL_TRAINING_CUTOFF,
-        FINAL_FORECAST_START,
-        FINAL_FORECAST_END,
-    )
-    return causal_training, horizon
+    return causal_training, known
 
 
 def create_submission(test: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
@@ -154,7 +147,7 @@ def train_and_predict_final(
         raise ValueError("chosen configuration must confirm final test was not used")
     validate_final_test_contract(test, train)
 
-    causal_training, horizon = build_final_model_inputs(
+    causal_training, known_frame = build_final_model_inputs(
         train, test, stores, holidays
     )
     model, metadata = train_global_model(
@@ -164,7 +157,13 @@ def train_and_predict_final(
         num_boost_round=int(chosen_config["num_boost_round"]),
         feature_columns=list(chosen_config["feature_list"]),
     )
-    predictions = predict_sales(model, horizon)
+    predictions = recursive_forecast(
+        model,
+        known_frame,
+        FINAL_TRAINING_CUTOFF,
+        FINAL_FORECAST_START,
+        FINAL_FORECAST_END,
+    )
     submission = create_submission(test, predictions)
     validate_final_submission(submission, test, train)
     return model, submission, metadata

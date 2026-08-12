@@ -20,8 +20,8 @@ are descriptive associations, not causal effects.
 | Data Analysis | **Implemented and validated** | Store/family performance, trend and seasonality, promotions, holidays, transactions/oil, and anomaly outputs under reports/. |
 | Power BI | **Implemented locally** | Eight-page PBIX exists. Power BI Service publication, gateway, refresh, and production access are not validated. |
 | Forecast Readiness | **Implemented and validated** | All 1,782 store-family series are classified; labels remain diagnostics and are not model features. |
-| Forecast Modeling | **Implemented and temporally validated** | Four rolling 16-day folds, statistical baselines, global LightGBM, ablation, controlled tuning, error analysis, intermittent-demand experiments, and prediction-interval evaluation. |
-| Final Forecast | **Implemented and validated** | Final global LightGBM trained through 2017-08-15; 28,512 ordered test predictions generated for 2017-08-16 through 2017-08-31. |
+| Forecast Modeling | **Recursive architecture implemented; rerun required** | Lag/rolling inference was corrected after the saved experiment chain. Existing scores and models are legacy until backtests are reproduced. |
+| Final Forecast | **Legacy artifact preserved; regeneration required** | The existing 28,512-row submission predates corrected recursive semantics and was not overwritten by this refactor. |
 
 ## Dataset and forecasting problem
 
@@ -57,6 +57,11 @@ and [Data Science Implementation Roadmap](docs/data_science_roadmap.md).
 
 ## Temporal validation and model results
 
+> **Legacy-result notice:** all metrics below were produced by the previous
+> fixed/frozen multi-step feature strategy. They are retained exactly as recorded,
+> but are not results of the corrected recursive pipeline. Rerun the full temporal
+> experiment chain before selecting or publishing a replacement model.
+
 Model selection uses the mean metric across all four rolling 16-day folds. It does
 not use the best individual fold or the final test set.
 
@@ -83,6 +88,10 @@ a separate pooled calculation used in error analysis, not the mean-fold selectio
 metric.
 
 ## Selected model and validated features
+
+The configuration below is the selection made under the legacy inference
+semantics. It remains reproducibility evidence, not a newly validated selection
+for the corrected recursive implementation.
 
 The competition strategy is one global LightGBM regressor with 250 boosting
 rounds, a log1p(sales) target, and nonnegative clip(expm1(prediction), lower=0)
@@ -156,6 +165,10 @@ See [Routing Analysis](reports/modeling/model_routing_analysis.md) and
 [Prediction Intervals](reports/modeling/prediction_intervals.md).
 
 ## Final forecast artifacts
+
+The listed final model and submission are legacy artifacts from the previous
+strategy. They are intentionally preserved and were not regenerated in the
+multi-step semantics task.
 
 - [Final submission](reports/modeling/final_submission.csv): exactly id,sales,
   28,512 rows, no index column, unique IDs in original test order, finite

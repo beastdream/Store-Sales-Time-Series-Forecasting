@@ -48,6 +48,53 @@ def _prepare_source_rows(
     return pd.concat([historical, future], ignore_index=True), historical["date"].max()
 
 
+def build_dense_known_frame(
+    sales: pd.DataFrame,
+    stores: pd.DataFrame,
+    holidays: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build the canonical dense calendar frame used by training and inference.
+
+    Every store-family series receives one row for every calendar date between
+    the input bounds. An absent source observation retains a null sale and
+    sales_observed=0; it is never converted to an observed zero. Target lags and
+    rolling features are deliberately added later from this same representation.
+    """
+    required = [*GRAIN, "sales", "onpromotion"]
+    _require_columns(sales, required, "sales")
+    source = sales.copy()
+    source["date"] = pd.to_datetime(source["date"], errors="coerce").dt.normalize()
+    if source.empty or source["date"].isna().any():
+        raise ValueError("sales must contain valid dated rows")
+    if source.duplicated(GRAIN).any():
+        raise ValueError("sales must have a unique store-family-date grain")
+
+    dates = pd.DataFrame(
+        {"date": pd.date_range(source["date"].min(), source["date"].max(), freq="D")}
+    )
+    series = source[["store_nbr", "family"]].drop_duplicates()
+    frame = dates.merge(series, how="cross", validate="many_to_many").merge(
+        source,
+        on=GRAIN,
+        how="left",
+        validate="one_to_one",
+    )
+    frame["sales_observed"] = frame["sales"].notna().astype("uint8")
+    frame["source_row_observed"] = frame["onpromotion"].notna().astype("uint8")
+    frame = frame.merge(
+        build_calendar_features(frame["date"]),
+        on="date",
+        how="left",
+        validate="many_to_one",
+    )
+    frame = add_store_metadata(frame, stores)
+    frame = add_promotion_features(frame)
+    frame = add_holiday_features(frame, holidays, stores)
+    if frame.duplicated(GRAIN).any() or frame[GRAIN].isna().any().any():
+        raise RuntimeError("dense forecast frame grain is invalid")
+    return frame.sort_values(GRAIN, kind="stable").reset_index(drop=True)
+
+
 def build_forecast_frame(
     train: pd.DataFrame,
     test: pd.DataFrame,
@@ -61,26 +108,14 @@ def build_forecast_frame(
     lag, rolling, anomaly, or full-history readiness feature is added here.
     """
     source, historical_end = _prepare_source_rows(train, test)
-    dates = pd.DataFrame(
-        {"date": pd.date_range(source["date"].min(), source["date"].max(), freq="D")}
-    )
-    stores_and_families = source[["store_nbr", "family"]].drop_duplicates()
-    grid = dates.merge(stores_and_families, how="cross", validate="many_to_many")
-    frame = grid.merge(source, on=GRAIN, how="left", validate="one_to_one")
+    frame = build_dense_known_frame(source, stores, holidays)
 
     inferred_historical = frame["date"].le(historical_end)
     frame["is_historical"] = frame["is_historical"].fillna(inferred_historical).astype("uint8")
     frame["is_future"] = frame["is_future"].fillna(~inferred_historical).astype("uint8")
     frame["row_type"] = frame["is_future"].map({0: "historical", 1: "future"})
-    frame["sales_observed"] = frame["sales"].notna().astype("uint8")
     frame["source_row_observed"] = frame["id"].notna().astype("uint8")
     frame["test_id"] = frame["id"].where(frame["is_future"].eq(1)).astype("UInt32")
-
-    calendar = build_calendar_features(frame["date"])
-    frame = frame.merge(calendar, on="date", how="left", validate="many_to_one")
-    frame = add_store_metadata(frame, stores)
-    frame = add_promotion_features(frame)
-    frame = add_holiday_features(frame, holidays, stores)
 
     if frame.duplicated(GRAIN).any():
         raise RuntimeError("forecast frame grain is not unique")

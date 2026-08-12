@@ -82,7 +82,7 @@ def _horizon_features(frame: pd.DataFrame, cutoff: str) -> pd.DataFrame:
     return add_horizon_safe_sales_rolling_features(result, cutoff)
 
 
-def test_validation_targets_cannot_enter_later_validation_features() -> None:
+def test_origin_mask_keeps_d1_audit_independent_of_future_actuals() -> None:
     history = _target_history()
     cutoff = "2024-02-03"
     future = history["date"].gt(cutoff)
@@ -96,22 +96,24 @@ def test_validation_targets_cannot_enter_later_validation_features() -> None:
         for column in clean
         if column.startswith("sales_lag_") or column.startswith("rolling_")
     ]
-    pd.testing.assert_frame_equal(
-        clean.loc[future, feature_columns].reset_index(drop=True),
-        changed.loc[future, feature_columns].reset_index(drop=True),
+    first_future = history.index[future][0]
+    pd.testing.assert_series_equal(
+        clean.loc[first_future, feature_columns],
+        changed.loc[first_future, feature_columns],
     )
 
 
-def test_fixed_origin_strategy_never_inserts_actual_future_targets() -> None:
-    history = _target_history()
-    cutoff = pd.Timestamp("2024-02-03")
-    result = _horizon_features(history, str(cutoff.date()))
-    horizon = result.loc[result["date"].gt(cutoff)].reset_index(drop=True)
+def test_low_level_origin_mask_is_not_used_as_multistep_strategy() -> None:
+    recursive_source = (
+        PROJECT_ROOT / "src" / "modeling" / "recursive.py"
+    ).read_text(encoding="utf-8")
+    final_source = (
+        PROJECT_ROOT / "src" / "modeling" / "final_forecast.py"
+    ).read_text(encoding="utf-8")
 
-    assert horizon.loc[0, "sales_lag_1"] == 34
-    assert horizon.loc[1:, "sales_lag_1"].isna().all()
-    assert horizon.loc[0, "rolling_mean_7"] == 31
-    assert horizon.loc[1:, "rolling_mean_7"].isna().all()
+    assert "recursive_forecast" in recursive_source
+    assert "recursive_forecast(" in final_source
+    assert "build_horizon_safe_features(" not in final_source
 
 
 def test_test_rows_have_no_target_or_forbidden_full_history_features() -> None:

@@ -2,7 +2,8 @@
 # # Detailed Out-of-Fold Forecast Error Analysis
 #
 # OOF predictions are reproduced with the chosen tuned configuration and the
-# original four temporal folds. ForecastReadiness is loaded only after all model
+# original four temporal folds using the shared recursive inference core.
+# ForecastReadiness is loaded only after all model
 # predictions have been created; it is a post-hoc segmentation label and never a
 # training feature.
 
@@ -27,12 +28,11 @@ from src.modeling.error_analysis import (
     score_segments,
     validate_oof_predictions,
 )
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import make_rolling_splits
 from src.modeling.train_global import (
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 
@@ -60,9 +60,9 @@ def reproduce_oof_predictions() -> pd.DataFrame:
     rows: list[pd.DataFrame] = []
 
     for fold, split in enumerate(splits, start=1):
-        horizon = build_horizon_safe_features(
-            known, split.train_end, split.validation_start, split.validation_end
-        )
+        horizon = known.loc[known["date"].between(
+            split.validation_start, split.validation_end
+        )].copy()
         model, _ = train_global_model(
             causal,
             split.train_end,
@@ -70,7 +70,10 @@ def reproduce_oof_predictions() -> pd.DataFrame:
             num_boost_round=config["num_boost_round"],
             feature_columns=config["feature_list"],
         )
-        predictions = predict_sales(model, horizon)
+        predictions = recursive_forecast(
+            model, known, split.train_end,
+            split.validation_start, split.validation_end,
+        )
         oof_fold = horizon[
             ["date", "store_nbr", "family", "store_type", "promotion_active", "is_holiday", "sales"]
         ].merge(

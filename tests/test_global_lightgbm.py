@@ -6,14 +6,14 @@ import numpy as np
 import pandas as pd
 
 from src.modeling.evaluate import compare_with_baselines, score_predictions
-from src.modeling.predict import load_model, predict_sales
+from src.modeling.predict import load_model
+from src.modeling.recursive import recursive_forecast
 from src.modeling.train_global import (
     FEATURE_COLUMNS,
     FORBIDDEN_FEATURES,
     MODEL_NAME,
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 
@@ -76,13 +76,20 @@ def test_horizon_features_are_invariant_to_validation_actuals() -> None:
     contaminated = known.copy()
     contaminated.loc[contaminated["date"].gt(origin), "sales"] = 99_999_999.0
 
-    clean = build_horizon_safe_features(known, origin, start, end)
-    changed = build_horizon_safe_features(contaminated, origin, start, end)
-    target_features = [column for column in FEATURE_COLUMNS if "lag" in column or "rolling" in column]
-    pd.testing.assert_frame_equal(clean[target_features], changed[target_features])
-    assert clean[target_features].notna().all().all()
-    first_series = clean.loc[clean["store_nbr"].eq(1)].sort_values("date")
-    assert first_series["rolling_mean_7"].nunique() == 1
+    def deterministic_prediction(_: object, features: pd.DataFrame) -> pd.DataFrame:
+        result = features[["date", "store_nbr", "family"]].copy()
+        result["prediction"] = features["sales_lag_1"].fillna(0).to_numpy()
+        return result
+
+    clean = recursive_forecast(
+        object(), known, origin, start, end,
+        prediction_function=deterministic_prediction,
+    )
+    changed = recursive_forecast(
+        object(), contaminated, origin, start, end,
+        prediction_function=deterministic_prediction,
+    )
+    pd.testing.assert_frame_equal(clean, changed)
 
 
 def test_global_model_uses_log_target_and_predicts_complete_nonnegative_grain() -> None:
@@ -90,16 +97,19 @@ def test_global_model_uses_log_target_and_predicts_complete_nonnegative_grain() 
     known = add_known_features(sales, stores, holidays)
     features = build_causal_training_features(known)
     origin = pd.Timestamp("2024-01-19")
-    horizon = build_horizon_safe_features(
-        known, origin, origin + pd.Timedelta(days=1), origin + pd.Timedelta(days=16)
-    )
     model, metadata = train_global_model(
         features,
         origin,
         parameters={"num_threads": 1},
         num_boost_round=5,
     )
-    predictions = predict_sales(model, horizon)
+    predictions = recursive_forecast(
+        model,
+        known,
+        origin,
+        origin + pd.Timedelta(days=1),
+        origin + pd.Timedelta(days=16),
+    )
 
     assert isinstance(model, lgb.Booster)
     assert metadata["model_name"] == MODEL_NAME

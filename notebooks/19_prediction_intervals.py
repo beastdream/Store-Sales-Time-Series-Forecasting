@@ -5,7 +5,8 @@
 # an independent 16-day calibration horizon immediately preceding that fold is
 # forecast from an earlier origin. An 80% split-conformal radius is estimated on
 # absolute log residuals and applied to P50 to create nonnegative P10/P90 bounds.
-# Current-fold validation targets never enter their own interval calibration.
+# Each point horizon uses the shared recursive core. Current-fold validation
+# targets never enter their own interval calibration.
 
 # %%
 import gc
@@ -22,12 +23,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import REPORTS_DIR, TABLES_DIR
 from src.data.load_raw import load_holidays, load_stores, load_train
 from src.modeling.error_analysis import attach_readiness_labels
-from src.modeling.predict import predict_sales
+from src.modeling.recursive import recursive_forecast
 from src.modeling.splits import make_rolling_splits
 from src.modeling.train_global import (
     add_known_features,
     build_causal_training_features,
-    build_horizon_safe_features,
     train_global_model,
 )
 from src.modeling.uncertainty import (
@@ -63,12 +63,9 @@ def reproduce_temporal_calibration() -> tuple[pd.DataFrame, pd.DataFrame]:
         calibration_end = split.train_end
         calibration_start = calibration_end - pd.Timedelta(days=HORIZON_DAYS - 1)
         calibration_origin = calibration_start - pd.Timedelta(days=1)
-        calibration_frame = build_horizon_safe_features(
-            known,
-            calibration_origin,
-            calibration_start,
-            calibration_end,
-        )
+        calibration_frame = known.loc[known["date"].between(
+            calibration_start, calibration_end
+        )].copy()
         model, _ = train_global_model(
             causal,
             calibration_origin,
@@ -76,7 +73,9 @@ def reproduce_temporal_calibration() -> tuple[pd.DataFrame, pd.DataFrame]:
             num_boost_round=config["num_boost_round"],
             feature_columns=config["feature_list"],
         )
-        calibration_prediction = predict_sales(model, calibration_frame)
+        calibration_prediction = recursive_forecast(
+            model, known, calibration_origin, calibration_start, calibration_end
+        )
         calibration_scored = calibration_frame[
             ["date", "store_nbr", "family", "sales"]
         ].merge(

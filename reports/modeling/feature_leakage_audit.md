@@ -8,17 +8,19 @@ without target-derived future information. `CONDITIONALLY SAFE` means it is allo
 only under the stated cutoff or availability contract. `UNSAFE` means it must not
 enter the initial training or inference frame in its current form.
 
-The multi-step implementation uses **horizon-safe historical features**. One fixed
-`forecast_origin` is supplied for the complete 16-day horizon. Sales after that
-origin are masked before lagging or shifting; the pipeline does not recursively
-insert validation actuals or predictions.
+The corrected multi-step implementation uses one recursive state transition.
+Sales after the forecast origin are masked once. Each predicted day is appended
+to a private temporary history before the next day's calendar lags and shifted
+rolling statistics are recomputed. Actual validation/test targets are never
+appended. Persisted metrics and model artifacts predate this correction and remain
+legacy until the complete experiment chain is rerun.
 
 ## Feature decisions
 
 | Feature group | Availability | Risk | Decision | Notes |
 |---|---|---|---|---|
-| Sales lags | Historical sales through the fold cutoff | Precomputing on a frame containing validation targets would expose those targets to later validation dates | CONDITIONALLY SAFE | Use `add_horizon_safe_sales_lags` with one fixed origin. It masks post-origin sales before group-wise shifts. Ordinary causal lags without an origin are appropriate only for training rows constructed inside the fold. |
-| Rolling statistics | Historical sales through the fold cutoff | An unshifted window includes the current target; a full-frame shifted window can still consume earlier validation actuals | CONDITIONALLY SAFE | Every implemented rolling statistic uses `_feature_sales.shift(1)`. For multi-step evaluation, `add_horizon_safe_sales_rolling_features` additionally masks all post-origin targets before shifting. |
+| Sales lags | Historical actuals through the fold cutoff plus prior horizon predictions | Sparse row shifts or validation actuals would make training/inference inconsistent or leak | CONDITIONALLY SAFE | Training and inference use a dense calendar. Recursive inference masks future targets, then appends predictions only, so lag N means calendar date t-N. |
+| Rolling statistics | Historical actuals through the fold cutoff plus prior horizon predictions | An unshifted window includes the current target; validation actuals would leak | CONDITIONALLY SAFE | Every statistic uses shifted sales. Recursive inference recomputes each later day after appending earlier predictions only. Missing observations remain null rather than zero. |
 | Calendar | Deterministic from the forecast date | Low; definitions can be wrong but do not reveal sales | SAFE | Day of week, ISO week, month, quarter, year, weekend, month boundaries and payday are reused from the project date-dimension builder. |
 | Promotion | Supplied for every Kaggle test row | Production promotion plans may be unavailable or revised | CONDITIONALLY SAFE | `onpromotion` and `promotion_active` are safe for the supplied competition horizon. Production use requires a promotion schedule available at the origin. Missing future promotion values raise an error. |
 | Holiday/event | Supplied event calendar with national/regional/local applicability | Announcement timing or later revisions can differ in production | CONDITIONALLY SAFE | Safe for the supplied competition calendar. Production backtests must use the event calendar version available at each origin. No causal effect is inferred. |
@@ -36,8 +38,8 @@ insert validation actuals or predictions.
    features remain identical.
 2. **Rolling windows are shifted.** Every rolling source is the group-wise
    `_feature_sales.shift(1)` column; current-day sales are not in their own feature.
-3. **Inference does not insert actual future targets.** The selected strategy is not
-   recursive. All post-origin targets are masked once for the complete horizon.
+3. **Inference does not insert actual future targets.** The corrected strategy is
+   recursive, but only model predictions are inserted into temporary history.
 4. **Test rows have no target leakage.** Canonical test rows contain `sales = NaN`,
    `sales_observed = 0`, and preserve their original test IDs.
 5. **Transactions do not require unavailable future values.** Transactions are absent

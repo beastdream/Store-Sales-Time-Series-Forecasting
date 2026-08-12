@@ -19,8 +19,10 @@ def test_sql_ddl_defines_date_store_dimension_and_fact_foreign_keys() -> None:
     assert "create table if not exists analytics.dim_store_date" in dimensions
     assert "date_store_key bigint primary key" in dimensions
     assert "unique (date_key, store_key)" in dimensions
-    assert facts.count("date_store_key bigint not null") == 2
-    assert facts.count("references analytics.dim_store_date (date_store_key)") == 2
+    assert facts.count("date_store_key bigint not null") == 1
+    assert facts.count("references analytics.dim_store_date (date_store_key)") == 1
+    assert "foreign key (date_key, store_key)" in facts
+    assert "references analytics.dim_store_date (date_key, store_key)" in facts
 
 
 def test_postgres_load_order_places_date_store_dimension_before_facts() -> None:

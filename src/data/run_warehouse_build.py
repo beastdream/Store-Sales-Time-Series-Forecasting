@@ -199,7 +199,7 @@ def run_warehouse_build() -> None:
             interim["train"], dim_date, dim_store, dim_family, dim_store_date
         ),
         "fact_store_transactions": build_fact_store_transactions(
-            interim["transactions"], dim_date, dim_store, dim_store_date
+            interim["transactions"], dim_date, dim_store
         ),
         "fact_oil_price": build_fact_oil_price(interim["oil"], dim_date),
         "bridge_store_holiday": bridge_store_holiday,
@@ -292,22 +292,6 @@ def run_warehouse_build() -> None:
                 .sum()
             ),
             bool(fact_sales["date_store_key"].isin(dim_store_date["date_store_key"]).all()),
-        ),
-        (
-            "Transaction fact unmapped date-store keys",
-            0,
-            int(
-                (
-                    ~fact_transactions["date_store_key"].isin(
-                        dim_store_date["date_store_key"]
-                    )
-                ).sum()
-            ),
-            bool(
-                fact_transactions["date_store_key"]
-                .isin(dim_store_date["date_store_key"])
-                .all()
-            ),
         ),
     ]
     failed = [name for name, _, _, passed in reconciliations if not passed]

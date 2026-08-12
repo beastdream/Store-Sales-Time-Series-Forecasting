@@ -148,7 +148,6 @@ def _transaction_inputs() -> tuple[
     pd.DataFrame,
     pd.DataFrame,
     pd.DataFrame,
-    pd.DataFrame,
 ]:
     transactions = pd.DataFrame(
         {
@@ -164,25 +163,21 @@ def _transaction_inputs() -> tuple[
         }
     )
     dim_store = pd.DataFrame({"store_key": [1, 2], "store_nbr": [1, 2]})
-    dim_store_date = _date_store_dimension(dim_date, dim_store)
-    return transactions, dim_date, dim_store, dim_store_date
+    return transactions, dim_date, dim_store
 
 
 def test_fact_store_transactions_reconciles_row_count_and_total() -> None:
     """Transaction fact preserves one row and the measure total per source row."""
-    transactions, dim_date, dim_store, dim_store_date = _transaction_inputs()
+    transactions, dim_date, dim_store = _transaction_inputs()
     original = transactions.copy(deep=True)
 
-    fact = build_fact_store_transactions(
-        transactions, dim_date, dim_store, dim_store_date
-    )
+    fact = build_fact_store_transactions(transactions, dim_date, dim_store)
 
     assert len(fact) == len(transactions)
     assert fact["transactions"].sum() == transactions["transactions"].sum()
     assert fact.columns.tolist() == [
         "date_key",
         "store_key",
-        "date_store_key",
         "transactions",
     ]
     pd.testing.assert_frame_equal(transactions, original)
@@ -190,14 +185,24 @@ def test_fact_store_transactions_reconciles_row_count_and_total() -> None:
 
 def test_fact_store_transactions_has_unique_non_missing_grain() -> None:
     """Date and store surrogate keys form a complete unique grain."""
-    transactions, dim_date, dim_store, dim_store_date = _transaction_inputs()
+    transactions, dim_date, dim_store = _transaction_inputs()
 
-    fact = build_fact_store_transactions(
-        transactions, dim_date, dim_store, dim_store_date
-    )
+    fact = build_fact_store_transactions(transactions, dim_date, dim_store)
 
     assert not fact.duplicated(["date_key", "store_key"]).any()
     assert not fact[["date_key", "store_key"]].isna().any().any()
+
+
+def test_fact_store_transactions_rejects_duplicate_grain() -> None:
+    """Two transaction rows for one date-store grain must never be multiplied."""
+    transactions, dim_date, dim_store = _transaction_inputs()
+    duplicate = pd.concat(
+        [transactions, transactions.iloc[[0]]],
+        ignore_index=True,
+    )
+
+    with pytest.raises(ValueError, match="duplicate date_key, store_key grain"):
+        build_fact_store_transactions(duplicate, dim_date, dim_store)
 
 
 @pytest.mark.parametrize(
@@ -209,21 +214,18 @@ def test_fact_store_transactions_rejects_unmapped_keys(
     missing_business_key: str,
 ) -> None:
     """Unmapped transaction dates or stores raise clear errors."""
-    transactions, dim_date, dim_store, dim_store_date = _transaction_inputs()
+    transactions, dim_date, dim_store = _transaction_inputs()
     if dimension_name == "date":
         dim_date = dim_date.iloc[[0]]
     else:
         dim_store = dim_store.iloc[[0]]
 
     with pytest.raises(ValueError, match=missing_business_key):
-        build_fact_store_transactions(
-            transactions, dim_date, dim_store, dim_store_date
-        )
+        build_fact_store_transactions(transactions, dim_date, dim_store)
 
 
 def test_facts_reject_unmapped_date_store_keys() -> None:
     train, dim_date, dim_store, dim_family, dim_store_date = _inputs()
-    transactions, tx_dates, tx_stores, tx_store_date = _transaction_inputs()
 
     with pytest.raises(ValueError, match="unmapped date_key \\+ store_key"):
         build_fact_daily_sales(
@@ -232,13 +234,6 @@ def test_facts_reject_unmapped_date_store_keys() -> None:
             dim_store,
             dim_family,
             dim_store_date.iloc[1:],
-        )
-    with pytest.raises(ValueError, match="unmapped date_key \\+ store_key"):
-        build_fact_store_transactions(
-            transactions,
-            tx_dates,
-            tx_stores,
-            tx_store_date.iloc[1:],
         )
 
 

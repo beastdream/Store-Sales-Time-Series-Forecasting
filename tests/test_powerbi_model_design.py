@@ -21,15 +21,20 @@ def test_date_store_key_is_unique_and_all_fact_keys_map() -> None:
     )
     transaction_keys = pd.read_parquet(
         PROCESSED / "fact_store_transactions.parquet",
-        columns=["date_store_key"],
+        columns=["date_key", "store_key"],
     )
 
     assert dim_store_date["date_store_key"].is_unique
     assert not dim_store_date.duplicated(["date_key", "store_key"]).any()
     assert sales_keys["date_store_key"].isin(dim_store_date["date_store_key"]).all()
-    assert transaction_keys["date_store_key"].isin(
-        dim_store_date["date_store_key"]
-    ).all()
+    mapped_transactions = transaction_keys.merge(
+        dim_store_date[["date_key", "store_key"]],
+        on=["date_key", "store_key"],
+        how="left",
+        indicator=True,
+        validate="one_to_one",
+    )
+    assert mapped_transactions["_merge"].eq("both").all()
 
 
 def test_holiday_slicer_dimension_contains_both_holiday_states() -> None:

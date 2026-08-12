@@ -29,4 +29,3 @@ All validations and reconciliations passed before warehouse tables were saved.
 | Store-date sales observations | 90936 | 90936 | PASS |
 | Store-date transaction observations | 83488 | 83488 | PASS |
 | Sales fact unmapped date-store keys | 0 | 0 | PASS |
-| Transaction fact unmapped date-store keys | 0 | 0 | PASS |

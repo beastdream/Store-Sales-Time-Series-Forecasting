@@ -159,9 +159,8 @@ def build_fact_store_transactions(
     transactions_clean: pd.DataFrame,
     dim_date: pd.DataFrame,
     dim_store: pd.DataFrame,
-    dim_store_date: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Map daily store transactions to date and store surrogate keys."""
+    """Build one transaction row per date and store using conformed keys."""
     transaction_columns = ["date", "store_nbr", "transactions"]
     _require_columns(transactions_clean, transaction_columns, "transactions_clean")
     _require_columns(dim_date, ["date_key", "full_date"], "dim_date")
@@ -199,10 +198,7 @@ def build_fact_store_transactions(
         "fact_store_transactions",
     )
     fact = fact.drop(columns="store_nbr")
-    fact = _merge_date_store_key(fact, dim_store_date, "fact_store_transactions")
-    fact = fact.loc[
-        :, ["date_key", "store_key", "date_store_key", "transactions"]
-    ]
+    fact = fact.loc[:, ["date_key", "store_key", "transactions"]]
 
     if len(fact) != source_row_count:
         raise RuntimeError("fact_store_transactions: row count reconciliation failed")

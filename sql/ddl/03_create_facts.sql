@@ -26,7 +26,6 @@ COMMENT ON TABLE analytics.fact_daily_sales IS
 CREATE TABLE IF NOT EXISTS analytics.fact_store_transactions (
     date_key INTEGER NOT NULL,
     store_key INTEGER NOT NULL,
-    date_store_key BIGINT NOT NULL,
     transactions INTEGER NOT NULL CHECK (transactions >= 0),
     CONSTRAINT pk_fact_store_transactions
         PRIMARY KEY (date_key, store_key),
@@ -35,8 +34,8 @@ CREATE TABLE IF NOT EXISTS analytics.fact_store_transactions (
     CONSTRAINT fk_fact_store_transactions_store
         FOREIGN KEY (store_key) REFERENCES analytics.dim_store (store_key),
     CONSTRAINT fk_fact_store_transactions_store_date
-        FOREIGN KEY (date_store_key)
-        REFERENCES analytics.dim_store_date (date_store_key)
+        FOREIGN KEY (date_key, store_key)
+        REFERENCES analytics.dim_store_date (date_key, store_key)
 );
 
 COMMENT ON TABLE analytics.fact_store_transactions IS
@@ -94,9 +93,6 @@ CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_date_key
 
 CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_store_key
     ON analytics.fact_store_transactions (store_key);
-
-CREATE INDEX IF NOT EXISTS idx_fact_store_transactions_date_store_key
-    ON analytics.fact_store_transactions (date_store_key);
 
 CREATE INDEX IF NOT EXISTS idx_fact_oil_price_date_key
     ON analytics.fact_oil_price (date_key);

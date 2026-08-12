@@ -334,7 +334,8 @@ def _check_store_date_and_holidays(outcome: ValidationOutcome) -> None:
         PROCESSED_PATHS["fact_daily_sales"], columns=["date_store_key"]
     )
     transaction_keys = pd.read_parquet(
-        PROCESSED_PATHS["fact_store_transactions"], columns=["date_store_key"]
+        PROCESSED_PATHS["fact_store_transactions"],
+        columns=["date_key", "store_key"],
     )
     expected_rows = len(dates) * len(stores)
     flags = [
@@ -359,11 +360,18 @@ def _check_store_date_and_holidays(outcome: ValidationOutcome) -> None:
     expected_key = store_date["date_key"].astype("int64") * 100 + store_date[
         "store_key"
     ].astype("int64")
+    mapped_transactions = transaction_keys.merge(
+        store_date[["date_key", "store_key"]],
+        on=["date_key", "store_key"],
+        how="left",
+        indicator=True,
+        validate="one_to_one",
+    )
     key_valid = (
         store_date["date_store_key"].equals(expected_key)
         and store_date["date_store_key"].is_unique
         and sales_keys["date_store_key"].isin(store_date["date_store_key"]).all()
-        and transaction_keys["date_store_key"].isin(store_date["date_store_key"]).all()
+        and mapped_transactions["_merge"].eq("both").all()
     )
     outcome.results.append(
         CheckResult(

@@ -1,6 +1,6 @@
 # Forecast Problem Definition
 
-> Scope: forecasting contract and feature-availability audit only. No feature dataset, model training, prediction, accuracy result, or submission is created.
+> Scope: this entrypoint audits only the forecasting contract and feature availability; it does not itself train a model or create predictions. Later validated pipeline stages and artifacts are documented in the project README.
 
 ## Verified forecasting contract
 
@@ -55,9 +55,9 @@ The historical calendar contains `4` dates with no sales observation: 2013-12-25
 
 The competition oil source contains dated information through the test end, so a competition experiment may evaluate it under explicit causal imputation rules. A production forecast may not know future oil prices at forecast origin. Production use must instead define lagged availability, an external oil forecast, or a scenario. Full-series interpolation that uses later dates is not valid inside temporal backtests.
 
-## Confirmed non-goals
+## This entrypoint's boundaries
 
-- No prediction was created.
-- No final feature dataset was created.
-- No forecasting model was trained or evaluated.
+- This contract audit does not create predictions.
+- It does not persist a final feature dataset.
+- It does not train or evaluate a forecasting model.
 - No test target was read or inferred.

@@ -1,184 +1,203 @@
-# Data Science Roadmap
+# Data Science Implementation Roadmap
 
-This document defines the next project phase. It is a plan only: no feature
-pipeline, temporal split, model, backtest, prediction, or submission is implemented
-by this documentation update.
+This document records what the forecasting phase actually implements, what has
+been validated, and what remains future work. Metrics are copied from persisted
+reports; no final-test accuracy is inferred.
 
-## 1. Forecasting Objective
+## 1. Forecasting objective — implemented
 
-- **Target:** `sales` (Sales Volume, not revenue).
-- **Grain:** store × family × day.
-- **Stores:** 54.
-- **Product families:** 33.
-- **Potential series:** 1,782.
-- **Historical actual-sales end:** 2017-08-15.
-- **Forecast horizon:** 16 days, from 2017-08-16 through 2017-08-31.
-- **Expected predictions:** 28,512 rows (`54 × 33 × 16`).
+- Target: Sales Volume (sales), not revenue.
+- Grain: store × family × day.
+- Historical actual-sales cutoff: 2017-08-15.
+- Forecast horizon: 16 days, 2017-08-16 through 2017-08-31.
+- Coverage: 54 stores × 33 families = 1,782 series.
+- Final output: 28,512 rows with original test IDs and row order.
 
-The future objective is to generate one nonnegative Sales Volume prediction for
-each test row. No forecast-accuracy result currently exists.
+The contract is validated by notebook 10, src/modeling/final_forecast.py, and
+artifact tests.
 
-## 2. Temporal Validation
+## 2. Temporal validation — implemented
 
-A random train/test split is inappropriate because it mixes future and past rows,
-breaks temporal dependence, and can make future information available to training.
+Four rolling validation folds use complete 16-day horizons:
 
-The planned approach is rolling or walk-forward validation with **16-day validation
-windows** to match the competition horizon. Each fold should:
+| Fold | Training end | Validation period |
+|---:|---|---|
+| 1 | 2017-06-12 | 2017-06-13 through 2017-06-28 |
+| 2 | 2017-06-28 | 2017-06-29 through 2017-07-14 |
+| 3 | 2017-07-14 | 2017-07-15 through 2017-07-30 |
+| 4 | 2017-07-30 | 2017-07-31 through 2017-08-15 |
 
-1. Choose a historical forecast origin.
-2. Build every feature using information available at or before that origin.
-3. Train on the permitted history.
-4. Forecast the next 16 calendar days.
-5. Score the complete date × store × family validation grid.
+Every fold forecasts from one fixed origin. Selection uses the mean RMSLE across
+all four folds, never a cherry-picked fold. The final competition test is not
+loaded by baseline, ablation, or tuning selection entrypoints.
 
-Multiple origins should cover different seasonal, promotion, holiday, and demand
-regimes. Fold definitions, minimum history, gap policy, and aggregation must be
-fixed before model comparison. This is a design plan, not implemented code.
+## 3. Baseline leaderboard — implemented
 
-## 3. Baseline Models
+The best statistical baseline is the 28-day rolling historical median at mean
+RMSLE **0.483829 ± 0.046095**. Other four-fold results are:
 
-Establish transparent baselines before machine learning:
+| Baseline | Mean RMSLE | Std |
+|---|---:|---:|
+| Rolling historical median, 28 days | 0.483829 | 0.046095 |
+| Seasonal naive, 7 days | 0.544832 | 0.048200 |
+| Seasonal naive, 14 days | 0.552091 | 0.048802 |
+| Seasonal naive, 28 days | 0.559653 | 0.046874 |
+| Last value naive | 0.609679 | 0.034279 |
+| Weekday historical median | 1.413779 | 0.015362 |
 
-- naive last-observation forecast;
-- seasonal naive with 7-day lag;
-- seasonal naive with 14-day lag;
-- seasonal naive with 28-day lag;
-- weekday median;
-- rolling median;
-- an intermittent-demand baseline where the readiness profile warrants it.
+Source: reports/modeling/baseline_summary.csv.
 
-Baseline availability and zero-demand behavior must be defined at every fold.
-Machine-learning models should only be accepted after demonstrating stable value
-over appropriate baselines.
+## 4. Feature engineering and leakage controls — implemented
 
-## 4. Feature Engineering
+Reusable feature builders cover calendar, future-known promotion, holiday/event
+applicability, store metadata, family identity, causal sales lags, and shifted
+rolling statistics. Feature frames are built in memory; persisted train/test
+feature snapshots are not implemented.
 
-Planned feature groups are:
+For multi-step forecasts, post-origin actual targets are masked. Historical lag
+references and origin rolling snapshots cannot read targets from inside the
+forecast horizon. Behavioral tests perturb future actuals and verify feature
+invariance.
 
-- **Calendar:** weekday, week/month/quarter, weekend, payday, month boundaries, and
-  seasonal encodings.
-- **Lag:** historical Sales Volume lags aligned to forecast origin.
-- **Rolling:** lagged rolling mean, median, variability, zero rate, and trend.
-- **Promotion:** future-known `onpromotion` values and historical promotion-demand
-  interactions, with clear availability rules.
-- **Holiday/event:** national, regional, and local applicability through store-date
-  context; transferred/work-day semantics retained.
-- **Store metadata:** city, state, type, and cluster.
-- **Family metadata:** family identity and historical behavior computed causally.
-- **Oil:** lagged or future covariates only after availability and leakage checks.
+Current-day future transactions, full-history readiness labels, and anomaly
+outputs are forbidden model inputs. Oil remains excluded because the current
+cleaning interpolation is not causal for temporal backtests. Future promotion and
+event inputs are valid for the supplied competition data but require an
+origin-available plan/calendar in production.
 
-Potential outputs remain planned until implemented:
+## 5. Controlled feature validation — implemented
 
-- `data/features/train_features.parquet`
-- `data/features/test_features.parquet`
+All ablations use the same four folds and fixed LightGBM configuration:
 
-## 5. Leakage Prevention
+| Added group | Mean RMSLE effect versus previous |
+|---|---:|
+| Sales lags | -0.037428, improved |
+| Rolling statistics | -0.012261, improved |
+| Calendar | -0.004891, improved |
+| Promotion | -0.011879, improved |
+| Holiday/event | +0.000798, negligible |
+| Store/family metadata | -0.005251, improved |
 
-At prediction time, every feature must use only information available at the
-forecast origin.
+M6 is the lowest observed complete experiment at **0.412917 ± 0.028385**. A
+reduced set excluding holidays was recommended for a confirmation experiment but
+was not separately backtested; consequently it did not replace the validated M6
+feature configuration used in tuning and final training.
 
-Correct pattern:
+## 6. Selected machine-learning model — implemented
 
-```python
-sales.shift(1).rolling(28).mean()
-```
+A controlled four-candidate search selected T2_moderate_capacity:
 
-Incorrect pattern:
+- global LightGBM regression;
+- log1p target and clipped expm1 inverse;
+- 250 boosting rounds;
+- learning rate 0.05;
+- 47 leaves, depth 10, minimum 100 rows per leaf;
+- feature and bagging fractions 0.9;
+- lambda L1 0.1 and lambda L2 2.0;
+- fixed seeds 42.
 
-```python
-sales.rolling(28).mean()
-```
+Selection metric: mean four-fold RMSLE **0.410900 ± 0.029071**. Mean MAE is
+**71.497548** and mean WAPE is **0.151356**. Improvement over untuned mean RMSLE
+is **0.002017**, above the predefined 0.001 threshold.
 
-The incorrect version includes the current target row in its own feature and can
-leak validation/future Sales Volume.
+Fold RMSLE is 0.397283, 0.394095, 0.397784, and 0.454439. This variation is
+reported explicitly; no single fold is used as the headline selection result.
 
-All aggregations, encodings, imputation parameters, thresholds, and normalization
-must be fitted within each training fold. `ForecastReadiness` and `SalesAnomalies`
-are outputs of full historical analysis. They must not automatically become model
-features in backtests unless they are recalculated causally at every training
-cutoff using only permitted history.
+## 7. Error analysis and readiness segmentation — implemented
 
-## 6. Transactions Limitation
+The persisted OOF artifact contains 114,048 predictions. Pooled metrics are RMSLE
+**0.411671**, MAE **71.497549**, and WAPE **0.151310**. These pooled results are
+separate from the mean-fold selection metric.
 
-Future transactions are not directly available for the 2017-08-16–2017-08-31
-forecast horizon. Current-day future transaction values must not be used as direct
-predictors unless transactions are forecast separately using a leakage-safe
-process.
+Readiness is attached after prediction only. Intermittent demand is the worst
+primary class at RMSLE **0.553603**, while high volatility is **0.544593**.
+Holiday rows are **0.478143** versus **0.409899** on regular rows. Detailed
+store, family, promotion, holiday, readiness, and overlapping-risk tables are in
+reports/modeling/error_analysis.md and scores_by_*.csv.
 
-Permissible candidates include lagged historical transaction features known at the
-forecast origin. Model evaluation should compare performance with and without them
-and document the production dependency they introduce.
+## 8. Specialized models — evaluated, shadow only
 
-## 7. Oil Price Considerations
+Croston, SBA, TSB, and two-stage LightGBM were evaluated on 417 post-hoc
+intermittent-demand series. Two-stage LightGBM achieved mean RMSLE
+**0.541790 ± 0.058160**, compared with **0.549916 ± 0.073648** for the tuned
+global model on the same cohort. It improved only two of four folds.
 
-Two availability settings must be distinguished:
+This result supports a controlled shadow experiment, not production routing.
+The cohort label is computed from full history; an origin-causal router has not
+been implemented. The final competition forecast therefore uses the global model
+for all series.
 
-- **Competition-known future covariates:** oil values included in the supplied
-  competition data may be usable under the competition rules.
-- **Production-realistic availability:** a real forecast may not know oil prices
-  for every future day and may require a lag, external forecast, or scenario.
+## 9. Prediction intervals — evaluated prototype
 
-Interpolation must be causal within temporal backtests. Filling a historical gap
-with a later observation can leak future information even if it appears harmless
-in a full-series EDA artifact. Oil feature policies should be compared by ablation
-and documented separately for competition and production use.
+An 80% split-conformal P10/P90 method on the log1p scale uses a separate prior
+16-day calibration window for each validation fold. P50 is unchanged.
 
-## 8. Candidate Models
+- Pooled empirical coverage: **79.8252%**.
+- Mean interval width: **428.216**.
+- Mean three-quantile pinball loss: **28.023029**.
+- Intermittent-demand coverage: **64.13%**.
+- High-volatility coverage: **66.76%**.
 
-Recommended progression:
+The interval method is leakage-controlled and evaluated, but uneven segment
+coverage prevents a production-ready claim. Final submission contains point
+forecasts only.
 
-1. Baselines.
-2. A global LightGBM or other gradient-boosting model across series.
-3. Feature-group and availability ablation.
-4. Error analysis by readiness segment.
-5. Specialized intermittent-demand approaches where appropriate.
-6. Prediction intervals and calibration.
-7. Optional advanced time-series or deep-learning models later.
+## 10. Final forecast generation — implemented
 
-LSTM, GRU, and Transformer-style models should **not** be the initial baseline.
-They add complexity before the data split, leakage controls, and transparent
-baselines have been proven.
+The validation-selected global strategy is retrained on all 3,000,888 historical
+rows through 2017-08-15. The final output covers 2017-08-16 through 2017-08-31.
+Before publication, the pipeline validates exact schema, 28,512 rows, unique and
+ordered IDs, complete date/store/family coverage, finite numeric predictions, and
+nonnegative sales. It then reloads the serialized model and CSV.
 
-## 9. Evaluation
+Artifacts:
 
-The primary competition-oriented metric is **RMSLE**, applied to nonnegative
-predictions. Supporting analytical metrics are:
+- models/global_lightgbm_chosen_config.json
+- models/final_global_lightgbm.txt
+- models/final_global_lightgbm_metadata.json
+- reports/modeling/final_submission.csv
 
-- **MAE** for absolute error;
-- **WAPE** for aggregate volume-weighted error, with explicit zero-denominator
-  handling.
+No final competition score is claimed because target values are unavailable.
 
-Report metrics by:
+## 11. Exact reproduction commands
 
-- overall;
-- store;
-- family;
-- readiness class;
-- promotion status;
-- holiday status.
+~~~bash
+# Tests
+python -m pytest -q
 
-Also inspect fold stability, bias, zero-demand behavior, cold-start groups, and
-error concentration. Model selection must use validation folds rather than the
-competition test target, which is unavailable.
+# Forecast contract and feature construction audit
+python notebooks/10_forecast_problem_definition.py
+python notebooks/13_feature_engineering.py
 
-## 10. Planned Outputs
+# Baseline backtests
+python notebooks/11_temporal_backtesting.py
 
-The following are future artifacts and do not currently represent completed work:
+# Untuned model backtest and full-history artifact
+python notebooks/14_global_lightgbm.py
 
-```text
-data/features/train_features.parquet
-data/features/test_features.parquet
+# Controlled feature and parameter experiments
+python notebooks/15_feature_ablation.py
+python notebooks/16_global_lightgbm_tuning.py
 
-models/
+# OOF diagnostics, specialists, and intervals
+python notebooks/17_forecast_error_analysis.py
+python notebooks/18_intermittent_demand_models.py
+python notebooks/19_prediction_intervals.py
 
-reports/modeling/baseline_scores.csv
-reports/modeling/backtest_scores.csv
-reports/modeling/feature_importance.csv
-reports/modeling/error_analysis.md
-reports/modeling/final_submission.csv
-```
+# Final full-history training and competition forecast
+python notebooks/20_final_competition_forecast.py
+~~~
 
-When implemented, each artifact should record its data cutoff, fold definition,
-feature version, model configuration, and reproducibility metadata. Until then,
-`data/features/` and `models/` remain placeholders and no submission is claimed.
+Run the commands from the repository root after installing requirements and
+placing source CSVs in data/raw/. The modeling commands are computationally
+expensive and intentionally retrain their artifacts.
+
+## 12. Remaining future work
+
+- Implement and validate an origin-causal intermittent-demand router.
+- Improve interval calibration for intermittent and high-volatility cohorts.
+- Add more future origins before making production-stability claims.
+- Implement causal oil availability/imputation before any oil ablation.
+- Forecast transactions separately before considering future transaction inputs.
+- Optionally persist versioned feature snapshots and add a feature registry.
+- Compare advanced models only under the same temporal/leakage contract.

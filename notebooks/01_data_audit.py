@@ -278,7 +278,7 @@ audit_summary_path.write_text(audit_summary, encoding="utf-8")
 show(
     "Saved reports",
     "\n".join(
-        str(path.relative_to(PROJECT_ROOT))
+        path.relative_to(PROJECT_ROOT).as_posix()
         for path in (
             column_audit_path,
             grain_issues_path,

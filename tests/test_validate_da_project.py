@@ -42,6 +42,7 @@ def test_command_check_sanitizes_machine_paths() -> None:
     assert str(validator.PROJECT_ROOT) not in result.details
     assert str(validator.sys.executable) not in result.details
     assert "`python -m example`" in result.details
+    assert "./reports/result.md" in result.details
 
 
 def test_absolute_path_scan_ignores_escape_sequences_but_detects_paths() -> None:

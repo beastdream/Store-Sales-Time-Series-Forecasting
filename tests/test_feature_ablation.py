@@ -16,10 +16,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def test_experiment_feature_sets_are_strictly_cumulative() -> None:
     experiments = list(EXPERIMENT_FEATURES)
-    assert experiments == ["M1", "M2", "M3", "M4", "M5", "M6"]
-    for previous, current in zip(experiments, experiments[1:]):
+    assert experiments == [
+        "M1", "M2", "M3", "M4", "M5", "M6", "M6_NO_HOLIDAY"
+    ]
+    for previous, current in zip(experiments[:5], experiments[1:6]):
         assert set(EXPERIMENT_FEATURES[previous]) < set(EXPERIMENT_FEATURES[current])
     assert EXPERIMENT_FEATURES["M6"] == FEATURE_COLUMNS
+    assert set(EXPERIMENT_FEATURES["M6_NO_HOLIDAY"]) < set(FEATURE_COLUMNS)
     assert "M7" not in EXPERIMENT_FEATURES
     assert ADDED_GROUP["M7"] == "oil features"
 
@@ -65,8 +68,10 @@ def test_ablation_artifacts_cover_identical_four_folds_and_match_controls() -> N
         report_dir / "ablation_scores.csv",
         parse_dates=["train_end", "validation_start", "validation_end"],
     )
-    assert len(scores) == 28
-    assert set(scores["experiment"]) == {f"M{index}" for index in range(7)}
+    assert len(scores) == 32
+    assert set(scores["experiment"]) == {
+        "M0", "M1", "M2", "M3", "M4", "M5", "M6", "M6_NO_HOLIDAY"
+    }
     assert scores.groupby("experiment")["fold"].nunique().eq(4).all()
     boundaries = scores.groupby("experiment")[
         ["train_end", "validation_start", "validation_end"]
@@ -82,7 +87,7 @@ def test_ablation_artifacts_cover_identical_four_folds_and_match_controls() -> N
         baseline["rmsle"].reset_index(drop=True),
         check_names=False,
     )
-    full_model = pd.read_csv(report_dir / "global_lgbm_scores.csv")
+    full_model = pd.read_csv(report_dir / "recursive_backtest_scores.csv")
     m6 = scores.loc[scores["experiment"].eq("M6")]
     pd.testing.assert_series_equal(
         m6["rmsle"].reset_index(drop=True),
@@ -99,11 +104,11 @@ def test_ablation_report_matches_fold_scores_and_excludes_unsupported_groups() -
 
     assert summary.loc["M1", "effect"] == "improved"
     assert summary.loc["M2", "effect"] == "improved"
-    assert summary.loc["M3", "effect"] == "improved"
+    assert summary.loc["M3", "effect"] == "negligible effect"
     assert summary.loc["M4", "effect"] == "improved"
-    assert summary.loc["M5", "effect"] == "negligible effect"
+    assert summary.loc["M5", "effect"] == "improved"
     assert summary.loc["M6", "effect"] == "improved"
-    assert recommended_experiment(summary.reset_index())["experiment"] == "M6"
+    assert recommended_experiment(summary.reset_index())["experiment"] == "M6_NO_HOLIDAY"
     assert "M7): not run" in report
-    assert "holiday/event features**, because its measured effect was not an improvement" in report
-    assert "has not itself been backtested" in report
+    assert "M6 holiday removal decision" in report
+    assert "M6_NO_HOLIDAY" in report

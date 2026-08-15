@@ -71,22 +71,20 @@ All ablations use the same four folds and fixed LightGBM configuration:
 
 | Added group | Mean RMSLE effect versus previous |
 |---|---:|
-| Sales lags | -0.037428, improved |
-| Rolling statistics | -0.012261, improved |
-| Calendar | -0.004891, improved |
-| Promotion | -0.011879, improved |
-| Holiday/event | +0.000798, negligible |
-| Store/family metadata | -0.005251, improved |
+| Sales lags | -0.041538, improved |
+| Rolling statistics | -0.011840, improved |
+| Calendar | -0.000606, negligible |
+| Promotion | -0.016595, improved |
+| Holiday/event | -0.001126, improved |
+| Store/family metadata | -0.003037, improved |
+| Full model without holiday/event, versus M6 | -0.002974, improved |
 
-M6 is the lowest observed complete experiment at **0.412917 ± 0.028385**. A
-reduced set excluding holidays was recommended for a confirmation experiment but
-was not separately backtested; consequently it did not replace the validated M6
-feature configuration used in tuning and final training.
+M6_NO_HOLIDAY is the best and most stable experiment at **0.406112 +/-
+0.018907**, compared with **0.409086 +/- 0.020242** for M6. It is the recommended
+36-feature candidate. Oil remains excluded because its current interpolation is
+not causal for temporal backtests.
 
-## 6. Previous selected machine-learning model — legacy, rerun required
-
-The following values are preserved from the previous fixed/frozen multi-step
-semantics. They must not be treated as recursive-pipeline results.
+## 6. Selected recursive machine-learning model — validated
 
 A controlled four-candidate search selected T2_moderate_capacity:
 
@@ -99,11 +97,11 @@ A controlled four-candidate search selected T2_moderate_capacity:
 - lambda L1 0.1 and lambda L2 2.0;
 - fixed seeds 42.
 
-Selection metric: mean four-fold RMSLE **0.410900 ± 0.029071**. Mean MAE is
-**71.497548** and mean WAPE is **0.151356**. Improvement over untuned mean RMSLE
-is **0.002017**, above the predefined 0.001 threshold.
+Selection metric: mean four-fold RMSLE **0.401675 +/- 0.018557**. Mean MAE is
+**63.968921** and mean WAPE is **0.135529**. Improvement over untuned M6_NO_HOLIDAY
+mean RMSLE is **0.004438**, above the predefined 0.001 threshold.
 
-Fold RMSLE is 0.397283, 0.394095, 0.397784, and 0.454439. This variation is
+Fold RMSLE is 0.392566, 0.385777, 0.400308, and 0.428048. This variation is
 reported explicitly; no single fold is used as the headline selection result.
 
 ## 7. Error analysis and readiness segmentation — implemented
@@ -145,9 +143,9 @@ The interval method is leakage-controlled and evaluated, but uneven segment
 coverage prevents a production-ready claim. Final submission contains point
 forecasts only.
 
-## 10. Final forecast generation — recursive code implemented, artifacts legacy
+## 10. Final forecast generation — regenerated and validated
 
-The existing final artifact retrained the previously selected global strategy on all 3,000,888 historical
+The final artifact retrains the selected recursive global strategy on all 3,000,888 historical
 rows through 2017-08-15. The final output covers 2017-08-16 through 2017-08-31.
 Before publication, the pipeline validates exact schema, 28,512 rows, unique and
 ordered IDs, complete date/store/family coverage, finite numeric predictions, and
@@ -160,10 +158,10 @@ Artifacts:
 - models/final_global_lightgbm_metadata.json
 - reports/modeling/final_submission.csv
 
-It predates the recursive correction and was not overwritten. No final
-competition score is claimed because target values are unavailable. The complete
-backtest, selection, diagnostic, and final-generation chain must be rerun before
-a replacement artifact is published.
+The canonical model, metadata, and submission now use M6_NO_HOLIDAY and the
+validation-selected T2 configuration. Previous fixed-strategy artifacts are
+retained with a legacy_fixed_strategy suffix. No competition score is claimed
+because final-horizon target values are unavailable.
 
 ## 11. Exact reproduction commands
 

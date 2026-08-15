@@ -229,5 +229,5 @@ figure_paths = [
 ]
 show(
     "Saved figures",
-    "\n".join(str(path.relative_to(PROJECT_ROOT)) for path in figure_paths),
+    "\n".join(path.relative_to(PROJECT_ROOT).as_posix() for path in figure_paths),
 )

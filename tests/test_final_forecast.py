@@ -130,8 +130,11 @@ def test_final_model_and_metadata_match_validation_selected_config() -> None:
     assert load_model(model_path).num_trees() == chosen["num_boost_round"] == 250
     assert metadata["model_type"] == "global LightGBM regression"
     assert metadata["chosen_experiment"] == chosen["chosen_experiment"]
+    assert metadata["feature_set_name"] == "M6_NO_HOLIDAY"
     assert metadata["feature_list"] == chosen["feature_list"]
     assert metadata["parameters"] == chosen["parameters"]
+    assert metadata["selected_parameters"] == chosen["parameters"]
+    assert metadata["model_artifact"] == "models/final_global_lightgbm.txt"
     assert metadata["training_cutoff"] == "2017-08-15"
     assert metadata["forecast_start"] == "2017-08-16"
     assert metadata["forecast_end"] == "2017-08-31"
@@ -140,6 +143,17 @@ def test_final_model_and_metadata_match_validation_selected_config() -> None:
     assert metadata["validation_metrics"]["mean_rmsle"] == chosen[
         "chosen_mean_rmsle"
     ]
+    assert metadata["validation_metrics"]["mean_mae"] == chosen["chosen_mae_mean"]
+    assert metadata["validation_metrics"]["mean_wape"] == chosen["chosen_wape_mean"]
     assert len(metadata["validation_metrics"]["temporal_folds"]) == 4
+    assert metadata["feature_list"] == chosen["feature_list"]
+    assert metadata["baseline_comparison"] == chosen["strongest_baseline"]
+    assert "recursive calendar-day" in metadata["inference_strategy"]
     assert metadata["final_test_used_for_model_selection"] is False
     assert metadata["submission"]["row_count"] == EXPECTED_SUBMISSION_ROWS
+    assert not {"holiday_count", "is_holiday", "is_work_day", "is_event"} & set(
+        load_model(model_path).feature_name()
+    )
+    assert (
+        PROJECT_ROOT / "reports" / "modeling" / "final_forecast_report.md"
+    ).is_file()

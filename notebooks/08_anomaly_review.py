@@ -316,7 +316,7 @@ def main() -> None:
     print(f"System-day anomalies: {len(system_anomalies):,}")
     print(f"Store-day anomalies: {len(store_anomalies):,}")
     print(anomalies["review_category"].value_counts().to_string())
-    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

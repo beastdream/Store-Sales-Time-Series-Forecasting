@@ -367,7 +367,7 @@ def main() -> None:
         f"{len(missing['missing_calendar_dates'])}"
     )
     print(f"Feature audit rows: {len(feature_audit)}")
-    print(f"Report: {REPORT_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Report: {REPORT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

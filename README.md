@@ -20,8 +20,8 @@ are descriptive associations, not causal effects.
 | Data Analysis | **Implemented and validated** | Store/family performance, trend and seasonality, promotions, holidays, transactions/oil, and anomaly outputs under reports/. |
 | Power BI | **Implemented locally** | Eight-page PBIX exists. Power BI Service publication, gateway, refresh, and production access are not validated. |
 | Forecast Readiness | **Implemented and validated** | All 1,782 store-family series are classified; labels remain diagnostics and are not model features. |
-| Forecast Modeling | **Recursive architecture implemented; rerun required** | Lag/rolling inference was corrected after the saved experiment chain. Existing scores and models are legacy until backtests are reproduced. |
-| Final Forecast | **Legacy artifact preserved; regeneration required** | The existing 28,512-row submission predates corrected recursive semantics and was not overwritten by this refactor. |
+| Forecast Modeling | **Recursive selection validated** | Base evaluation, M1-M6/M6_NO_HOLIDAY ablation, and controlled four-candidate tuning use the corrected recursive contract. |
+| Final Forecast | **Regenerated and validated** | The 28,512-row submission and 250-tree model use M6_NO_HOLIDAY, selected T2 parameters, and recursive inference. |
 
 ## Dataset and forecasting problem
 
@@ -57,63 +57,41 @@ and [Data Science Implementation Roadmap](docs/data_science_roadmap.md).
 
 ## Temporal validation and model results
 
-> **Legacy-result notice:** all metrics below were produced by the previous
-> fixed/frozen multi-step feature strategy. They are retained exactly as recorded,
-> but are not results of the corrected recursive pipeline. Rerun the full temporal
-> experiment chain before selecting or publishing a replacement model.
-
 Model selection uses the mean metric across all four rolling 16-day folds. It does
 not use the best individual fold or the final test set.
 
 | Candidate | Fold count | Mean RMSLE | RMSLE std | Mean MAE | Mean WAPE |
 |---|---:|---:|---:|---:|---:|
-| **T2 tuned global LightGBM — selected** | 4 | **0.410900** | **0.029071** | 71.497548 | 0.151356 |
-| Untuned global LightGBM | 4 | 0.412917 | 0.028385 | 72.762005 | 0.154012 |
+| **T2 tuned M6_NO_HOLIDAY — selected** | 4 | **0.401675** | **0.018557** | **63.968921** | **0.135529** |
+| Untuned M6_NO_HOLIDAY | 4 | 0.406112 | 0.018907 | 66.528250 | 0.140951 |
 | Rolling historical median, 28 days | 4 | 0.483829 | 0.046095 | 103.300456 | 0.218477 |
-| Seasonal naive, 7 days | 4 | 0.544832 | 0.048200 | 79.976144 | 0.169547 |
-| Seasonal naive, 14 days | 4 | 0.552091 | 0.048802 | 87.070868 | 0.184478 |
-| Seasonal naive, 28 days | 4 | 0.559653 | 0.046874 | 79.760265 | 0.168949 |
-| Last value naive | 4 | 0.609679 | 0.034279 | 147.653929 | 0.312495 |
-| Weekday historical median | 4 | 1.413779 | 0.015362 | 127.956768 | 0.270670 |
 
 These values come directly from
 [tuning_results.csv](reports/modeling/tuning_results.csv) and
 [baseline_summary.csv](reports/modeling/baseline_summary.csv). The selected model
-improved mean RMSLE over the untuned control by **0.002017**, exceeding the
-predefined 0.001 selection threshold. Its fold RMSLE values were 0.397283,
-0.394095, 0.397784, and 0.454439; the final fold is visibly harder.
+improved mean RMSLE over the untuned control by **0.004438**, exceeding the
+predefined 0.001 selection threshold. Its fold RMSLE values were 0.392566,
+0.385777, 0.400308, and 0.428048; the final fold remains the hardest.
 
-The pooled row-level OOF RMSLE is **0.411671** across 114,048 predictions. This is
-a separate pooled calculation used in error analysis, not the mean-fold selection
-metric.
+## Recursive feature selection
 
-## Selected model and validated features
+The corrected recursive ablation found mean RMSLE changes of **-0.041538** for
+lags, **-0.011840** for rolling statistics, **-0.000606** for calendar
+(negligible), **-0.016595** for promotion, **-0.001126** for holiday/event, and
+**-0.003037** for store/family metadata.
 
-The configuration below is the selection made under the legacy inference
-semantics. It remains reproducibility evidence, not a newly validated selection
-for the corrected recursive implementation.
+The direct full-model confirmation is decisive: **M6_NO_HOLIDAY** achieved mean
+RMSLE **0.406112 +/- 0.018907**, versus **0.409086 +/- 0.020242** for M6, while
+also improving MAE and WAPE. It is therefore the recommended 36-feature candidate
+for the next stage. Oil was not tested because its current interpolation is
+future-aware. See the [ablation report](reports/modeling/ablation_summary.md).
 
-The competition strategy is one global LightGBM regressor with 250 boosting
-rounds, a log1p(sales) target, and nonnegative clip(expm1(prediction), lower=0)
-inversion. The selected configuration is T2_moderate_capacity with 47 leaves,
-maximum depth 10, minimum 100 rows per leaf, learning rate 0.05, deterministic
-seeds, feature/bagging fraction 0.9, and L1/L2 regularization 0.1/2.0.
+## Recursive tuned model
 
-Controlled cumulative ablation across the same four folds found:
-
-- sales lags: improved mean RMSLE by 0.037428;
-- rolling statistics: improved by 0.012261;
-- calendar features: improved by 0.004891;
-- promotion features: improved by 0.011879;
-- holiday/event features: negligible degradation of 0.000798;
-- store/family metadata: improved by 0.005251.
-
-The final validated T2 configuration retains the complete M6 feature list,
-including holiday/event columns. Although ablation suggested excluding the
-holiday/event group, that reduced combination was never separately backtested and
-therefore did not replace the validated M6 configuration. Oil was not tested
-because its existing interpolation is future-aware. Current/future transactions,
-readiness outputs, and anomaly outputs are excluded.
+The selected T2_moderate_capacity configuration uses 47 leaves, depth 10,
+minimum 100 rows per leaf, learning rate 0.05, feature/bagging fractions 0.9,
+lambda L1 0.1, lambda L2 2.0, deterministic seeds, and 250 boosting rounds.
+See the [controlled tuning report](reports/modeling/tuning_summary.md).
 
 ## Leakage controls
 
@@ -166,9 +144,9 @@ See [Routing Analysis](reports/modeling/model_routing_analysis.md) and
 
 ## Final forecast artifacts
 
-The listed final model and submission are legacy artifacts from the previous
-strategy. They are intentionally preserved and were not regenerated in the
-multi-step semantics task.
+The canonical final model and submission were regenerated with the corrected
+recursive strategy. Previous fixed-strategy artifacts are retained separately
+with the `legacy_fixed_strategy` suffix.
 
 - [Final submission](reports/modeling/final_submission.csv): exactly id,sales,
   28,512 rows, no index column, unique IDs in original test order, finite

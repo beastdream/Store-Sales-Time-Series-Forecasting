@@ -477,8 +477,8 @@ def main() -> None:
     print(f"Store-day rows: {len(frame):,}")
     print(f"Correlation: {frame['total_sales'].corr(frame['transactions']):.6f}")
     print(f"Unusual store-days: {frame['unusual_transaction_day'].sum():,}")
-    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

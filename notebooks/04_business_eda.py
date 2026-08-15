@@ -760,8 +760,8 @@ def main() -> None:
     print("\nFindings")
     for finding in findings:
         print(f"- {finding}")
-    print(f"\nTable: {STORE_PERFORMANCE_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+    print(f"\nTable: {STORE_PERFORMANCE_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT).as_posix()}")
 
     family_sales, families, family_dates = load_family_inputs()
     family_performance = build_family_performance(
@@ -806,9 +806,9 @@ def main() -> None:
     print("\nFamily findings")
     for finding in family_findings:
         print(f"- {finding}")
-    print(f"\nTable: {FAMILY_PERFORMANCE_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Readiness: {FAMILY_READINESS_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Figures: {FAMILY_FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+    print(f"\nTable: {FAMILY_PERFORMANCE_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Readiness: {FAMILY_READINESS_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Figures: {FAMILY_FIGURE_DIR.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

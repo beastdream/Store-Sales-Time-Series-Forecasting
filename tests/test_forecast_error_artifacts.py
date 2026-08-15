@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPORT_DIR = PROJECT_ROOT / "reports" / "modeling"
 
 
-def test_oof_artifact_has_complete_unique_four_fold_grain_and_metrics() -> None:
+def test_legacy_oof_artifact_matches_its_legacy_tuning_evidence() -> None:
     oof = pd.read_parquet(REPORT_DIR / "global_lgbm_tuned_oof_predictions.parquet")
     validate_oof_predictions(oof)
 
@@ -18,7 +18,9 @@ def test_oof_artifact_has_complete_unique_four_fold_grain_and_metrics() -> None:
     assert oof.groupby("fold").size().eq(16 * 54 * 33).all()
     assert oof["prediction"].ge(0).all()
     fold_scores = score_segments(oof, ["fold"]).set_index("fold")
-    tuning = pd.read_csv(REPORT_DIR / "tuning_fold_scores.csv")
+    tuning = pd.read_csv(
+        REPORT_DIR / "tuning_fold_scores_legacy_fixed_strategy.csv"
+    )
     tuning = tuning.loc[tuning["experiment"].eq("T2_moderate_capacity")].set_index("fold")
     for fold in range(1, 5):
         assert fold_scores.loc[fold, "rmsle"] == pytest.approx(tuning.loc[fold, "rmsle"])

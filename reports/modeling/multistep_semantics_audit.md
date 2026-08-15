@@ -29,12 +29,15 @@ No actual validation/test target is appended.
 
 ## Artifact boundary
 
-Existing baseline/model/tuning/error/interval reports, trained model files, and
-final_submission.csv were produced before this semantics correction. They are
-preserved unchanged as legacy evidence and must not be presented as results of
-the recursive pipeline. Reproduce temporal backtests, selection, downstream
-diagnostics, and final training in order before publishing replacement metrics or
-a replacement submission.
+Existing error/interval reports and specialist artifacts were produced before
+this semantics correction. They are preserved as legacy evidence and must not be
+presented as results of the recursive pipeline.
 
-No tuning, full backtest, model selection, final training, or submission
-generation was run as part of this correction.
+The separate untuned base-model recursive backtest is now recorded in
+recursive_backtest_scores.csv, recursive_global_lgbm_oof_predictions.parquet,
+and recursive_vs_previous_strategy.md. The corrected feature ablation and
+M6_NO_HOLIDAY recommendation are recorded in ablation_scores.csv and
+ablation_summary.md. Controlled tuning, final full-history training, and the
+28,512-row submission have now also been regenerated under recursive semantics.
+Previous tuning/model/submission evidence is retained with a
+legacy_fixed_strategy suffix. Baselines were verified as unaffected.

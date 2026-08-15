@@ -143,8 +143,8 @@ def main() -> None:
 
     print("Baseline temporal backtesting completed.")
     print(summary.to_string(index=False))
-    print(f"Scores: {SCORES_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Summary: {SUMMARY_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Scores: {SCORES_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Summary: {SUMMARY_PATH.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

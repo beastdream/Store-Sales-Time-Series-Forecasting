@@ -2,7 +2,8 @@
 # # Controlled Global LightGBM Feature Ablation
 #
 # Every LightGBM experiment uses the same four 16-day folds, fixed parameters,
-# 250 boosting rounds, log target and recursive calendar-day inference. M7 is gated off:
+# 250 boosting rounds, log target and recursive calendar-day inference. M6_NO_HOLIDAY
+# directly tests the complete metadata model without holiday/event fields. M7 is gated off:
 # the current oil interpolation reads future values and has not passed a causal
 # availability scenario. No final test target is loaded or used.
 
@@ -43,9 +44,16 @@ SCORES_PATH = REPORT_DIR / "ablation_scores.csv"
 SUMMARY_PATH = REPORT_DIR / "ablation_summary.md"
 BASELINE_SCORES_PATH = REPORT_DIR / "baseline_scores.csv"
 BASELINE_SUMMARY_PATH = REPORT_DIR / "baseline_summary.csv"
-FULL_MODEL_SCORES_PATH = REPORT_DIR / "global_lgbm_scores.csv"
+RECURSIVE_MODEL_SCORES_PATH = REPORT_DIR / "recursive_backtest_scores.csv"
 HORIZON_DAYS = 16
 N_FOLDS = 4
+EXPECTED_SERIES = 1_782
+EXPECTED_FOLD_ROWS = EXPECTED_SERIES * HORIZON_DAYS
+INFERENCE_STRATEGY = "recursive_untuned"
+SCORE_COLUMNS = [
+    "experiment", "model", "added_group", "inference_strategy", "fold",
+    "train_end", "validation_start", "validation_end", "rmsle", "mae", "wape",
+]
 
 
 def markdown_table(frame: pd.DataFrame) -> str:
@@ -58,40 +66,83 @@ def markdown_table(frame: pd.DataFrame) -> str:
     return "\n".join(rows)
 
 
+def validate_splits(splits: tuple[object, ...]) -> None:
+    """Pin this run to the validated four rolling-origin folds."""
+    expected = [
+        ("2017-06-12", "2017-06-13", "2017-06-28"),
+        ("2017-06-28", "2017-06-29", "2017-07-14"),
+        ("2017-07-14", "2017-07-15", "2017-07-30"),
+        ("2017-07-30", "2017-07-31", "2017-08-15"),
+    ]
+    actual = [
+        (
+            split.train_end.date().isoformat(),
+            split.validation_start.date().isoformat(),
+            split.validation_end.date().isoformat(),
+        )
+        for split in splits
+    ]
+    if actual != expected:
+        raise RuntimeError(f"unexpected temporal folds: {actual}")
+
+
 def seed_control_rows() -> pd.DataFrame:
-    """Reuse already validated M0 and identical-configuration M6 fold scores."""
+    """Reuse verified M0 and the identical recursive M6 fold evaluation."""
     baseline_summary = pd.read_csv(BASELINE_SUMMARY_PATH)
     strongest_model = baseline_summary.loc[baseline_summary["rmsle_mean"].idxmin(), "model"]
     m0 = pd.read_csv(BASELINE_SCORES_PATH, parse_dates=["train_end", "validation_start", "validation_end"])
     m0 = m0.loc[m0["model"].eq(strongest_model)].copy()
     m0["experiment"] = "M0"
     m0["added_group"] = ADDED_GROUP["M0"]
+    m0["inference_strategy"] = "verified_statistical_baseline"
 
-    m6 = pd.read_csv(FULL_MODEL_SCORES_PATH, parse_dates=["train_end", "validation_start", "validation_end"])
+    m6 = pd.read_csv(
+        RECURSIVE_MODEL_SCORES_PATH,
+        parse_dates=["train_end", "validation_start", "validation_end"],
+    )
+    if not m6["strategy"].eq("recursive_global_lightgbm_untuned").all():
+        raise RuntimeError("M6 source is not the validated untuned recursive run")
     m6["experiment"] = "M6"
+    m6["model"] = MODEL_NAME
     m6["added_group"] = ADDED_GROUP["M6"]
-    columns = [
-        "experiment", "model", "added_group", "fold", "train_end",
-        "validation_start", "validation_end", "rmsle", "mae", "wape",
-    ]
-    return pd.concat([m0[columns], m6[columns]], ignore_index=True)
+    m6["inference_strategy"] = INFERENCE_STRATEGY
+    controls = pd.concat([m0[SCORE_COLUMNS], m6[SCORE_COLUMNS]], ignore_index=True)
+    if not controls.groupby("experiment").size().eq(N_FOLDS).all():
+        raise RuntimeError("M0/M6 control evidence must contain exactly four folds")
+    return controls
 
 
 def run_experiments() -> pd.DataFrame:
-    """Run M1-M5 and checkpoint deterministic fold results after every fold."""
+    """Run recursive M1-M5 and M6_NO_HOLIDAY with fold checkpoints."""
     control = seed_control_rows()
-    existing = pd.read_csv(SCORES_PATH, parse_dates=["train_end", "validation_start", "validation_end"]) if SCORES_PATH.exists() else control
-    valid_experiments = {"M0", "M1", "M2", "M3", "M4", "M5", "M6"}
-    existing = existing.loc[existing["experiment"].isin(valid_experiments)]
-    # M0 and M6 are replaced from authoritative existing backtests each run.
-    existing = existing.loc[~existing["experiment"].isin(["M0", "M6"])]
-    scores = pd.concat([control, existing], ignore_index=True)
+    existing = pd.DataFrame(columns=SCORE_COLUMNS)
+    if SCORES_PATH.exists():
+        candidate = pd.read_csv(
+            SCORES_PATH,
+            parse_dates=["train_end", "validation_start", "validation_end"],
+        )
+        if set(SCORE_COLUMNS).issubset(candidate.columns):
+            valid_experiments = set(EXPERIMENT_FEATURES) - {"M6"}
+            existing = candidate.loc[
+                candidate["experiment"].isin(valid_experiments)
+                & candidate["inference_strategy"].eq(INFERENCE_STRATEGY),
+                SCORE_COLUMNS,
+            ]
+    if existing.duplicated(["experiment", "fold"]).any():
+        raise RuntimeError("recursive ablation checkpoint contains duplicate folds")
+    scores = (
+        control.copy()
+        if existing.empty
+        else pd.concat([control, existing], ignore_index=True)
+    )
 
     train = load_train()
     known = add_known_features(train, load_stores(), load_holidays())
     causal = build_causal_training_features(known)
     splits = make_rolling_splits(train["date"].max(), HORIZON_DAYS, N_FOLDS)
-    expected_rows = train[["store_nbr", "family"]].drop_duplicates().shape[0] * HORIZON_DAYS
+    validate_splits(splits)
+    if train[["store_nbr", "family"]].drop_duplicates().shape[0] != EXPECTED_SERIES:
+        raise RuntimeError("unexpected store-family series count")
 
     for experiment, features in EXPERIMENT_FEATURES.items():
         if experiment == "M6":
@@ -104,7 +155,7 @@ def run_experiments() -> pd.DataFrame:
             horizon = known.loc[known["date"].between(
                 split.validation_start, split.validation_end
             )].copy()
-            if len(horizon) != expected_rows:
+            if len(horizon) != EXPECTED_FOLD_ROWS:
                 raise AssertionError(f"{experiment} fold {fold}: incomplete horizon")
             model, metadata = train_global_model(
                 causal,
@@ -115,6 +166,8 @@ def run_experiments() -> pd.DataFrame:
             )
             if metadata["parameters"] != DEFAULT_PARAMETERS:
                 raise AssertionError("ablation parameters changed across experiments")
+            if model.feature_name() != features:
+                raise AssertionError("trained feature list differs from the experiment")
             predictions = recursive_forecast(
                 model, known, split.train_end,
                 split.validation_start, split.validation_end,
@@ -125,6 +178,7 @@ def run_experiments() -> pd.DataFrame:
                     "experiment": experiment,
                     "model": MODEL_NAME,
                     "added_group": ADDED_GROUP[experiment],
+                    "inference_strategy": INFERENCE_STRATEGY,
                     "fold": fold,
                     "train_end": split.train_end,
                     "validation_start": split.validation_start,
@@ -141,32 +195,46 @@ def run_experiments() -> pd.DataFrame:
 def write_summary(scores: pd.DataFrame) -> pd.DataFrame:
     summary = summarize_ablation(scores)
     best = recommended_experiment(summary)
-    best_order = int(str(best.experiment).removeprefix("M"))
-    recommended_features: list[str] = []
-    previous_features: list[str] = []
-    excluded_groups: list[str] = []
-    for experiment, current_features in EXPERIMENT_FEATURES.items():
-        if int(experiment.removeprefix("M")) > best_order:
-            break
-        added_features = [feature for feature in current_features if feature not in previous_features]
-        effect = summary.loc[summary["experiment"].eq(experiment), "effect"].iloc[0]
-        if effect == "improved":
-            recommended_features.extend(added_features)
-        else:
-            excluded_groups.append(ADDED_GROUP[experiment])
-        previous_features = current_features
+    recommended_features = EXPERIMENT_FEATURES[str(best.experiment)]
+    m6 = summary.loc[summary["experiment"].eq("M6")].iloc[0]
+    no_holiday = summary.loc[
+        summary["experiment"].eq("M6_NO_HOLIDAY")
+    ].iloc[0]
+    omit_holiday = (
+        no_holiday.rmsle_mean
+        <= m6.rmsle_mean + NEGLIGIBLE_RMSLE_THRESHOLD
+    )
     table = summary.copy()
-    numeric = ["rmsle_mean", "rmsle_std", "mae_mean", "wape_mean", "delta_rmsle_vs_previous"]
-    table[numeric] = table[numeric].round(6)
+    numeric = [
+        "rmsle_mean", "rmsle_std", "mae_mean", "wape_mean",
+        "delta_rmsle_vs_reference",
+    ]
+    for column in numeric:
+        table[column] = pd.to_numeric(table[column], errors="coerce").round(6)
+    for column in ["rmsle_mean", "rmsle_std", "mae_mean", "wape_mean"]:
+        table[column] = table[column].map(lambda value: f"{value:.6f}")
+    table["delta_rmsle_vs_reference"] = table[
+        "delta_rmsle_vs_reference"
+    ].map(lambda value: "-" if pd.isna(value) else f"{value:.6f}")
+    table["comparison_experiment"] = table["comparison_experiment"].fillna("-")
+    effect_labels = {
+        "reference": "REFERENCE",
+        "improved": "IMPROVED",
+        "degraded": "DEGRADED",
+        "negligible effect": "NEGLIGIBLE",
+    }
+    table["effect"] = table["effect"].map(effect_labels)
     lines = [
         "# Controlled Global LightGBM Feature Ablation",
         "",
-        "All M1-M6 experiments use the same four rolling 16-day folds, the same fixed "
+        "All M1-M6 and M6_NO_HOLIDAY experiments use the same four rolling 16-day "
+        "folds, the same fixed "
         f"LightGBM parameters, and {DEFAULT_NUM_BOOST_ROUND} boosting rounds. No "
         "hyperparameter tuning or final test target is used.",
         "",
-        f"Effects use mean RMSLE relative to the immediately preceding experiment. "
-        f"Absolute changes below {NEGLIGIBLE_RMSLE_THRESHOLD:.3f} are `negligible effect`.",
+        f"M1-M6 effects use mean RMSLE relative to the preceding cumulative experiment; "
+        "M6_NO_HOLIDAY is compared directly with M6. "
+        f"Absolute changes up to {NEGLIGIBLE_RMSLE_THRESHOLD:.3f} are `NEGLIGIBLE`.",
         "",
         markdown_table(table),
         "",
@@ -177,27 +245,34 @@ def write_summary(scores: pd.DataFrame) -> pd.DataFrame:
         if row.experiment == "M0":
             continue
         lines.append(
-            f"- **{row.added_group} ({row.experiment}): {row.effect}.** "
-            f"Mean RMSLE change versus previous = {row.delta_rmsle_vs_previous:+.6f}."
+            f"- **{row.added_group} ({row.experiment}): "
+            f"{effect_labels[row.effect]}.** "
+            f"Mean RMSLE change versus {row.comparison_experiment} = "
+            f"{row.delta_rmsle_vs_reference:+.6f}."
         )
     lines.extend(
         [
             "- **Oil features (M7): not run.** The current oil cleaner uses future-aware "
             "linear interpolation and `bfill`; no leakage-safe availability scenario has passed.",
             "",
+            "## M6 holiday removal decision",
+            "",
+            f"M6_NO_HOLIDAY has mean RMSLE {no_holiday.rmsle_mean:.6f} versus "
+            f"{m6.rmsle_mean:.6f} for M6. It is "
+            f"{'better or equivalent, so holiday/event features should be omitted from the final point-forecast candidate' if omit_holiday else 'materially worse, so this run does not support removing holiday/event features'}.",
+            "The M5-versus-M4 increment and the full-model removal test answer different "
+            "conditional questions. Here holiday/event fields help slightly before metadata, "
+            "but hurt once metadata is present; the direct M6 comparison governs the full-model decision.",
+            "",
             "## Recommended feature set",
             "",
-            f"**{best.experiment}** is the lowest-scoring complete experiment, with mean "
-            f"RMSLE {best.rmsle_mean:.6f}. For the next model, recommend only feature "
-            "groups whose incremental effect improved validation RMSLE. The resulting "
-            f"feature set is: `{', '.join(recommended_features)}`.",
-            "",
-            f"Excluded despite appearing in the cumulative best experiment: "
-            f"**{', '.join(excluded_groups)}**, because its measured effect was not an "
-            "improvement. This reduced combination has not itself been backtested and must "
-            "pass a confirmation run before replacing the validated M6 artifact. Features "
-            "added after the best experiment are not recommended without evidence. M7 "
-            "remains prohibited.",
+            "Selection first establishes the best mean RMSLE band (within 0.001), "
+            "then uses fold RMSLE stability and finally feature-count simplicity.",
+            f"**{best.experiment}** is recommended with mean RMSLE "
+            f"{best.rmsle_mean:.6f}, std {best.rmsle_std:.6f}, and "
+            f"{len(recommended_features)} features: `{', '.join(recommended_features)}`.",
+            "This is feature selection only; no hyperparameter tuning or final-test "
+            "selection was performed. M7 remains prohibited.",
         ]
     )
     SUMMARY_PATH.write_text("\n".join(lines), encoding="utf-8")

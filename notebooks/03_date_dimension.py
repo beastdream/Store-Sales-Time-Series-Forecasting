@@ -111,4 +111,4 @@ validation = pd.Series(
     name="value",
 )
 show("Calendar validation", validation.to_string())
-show("Parquet output", DIM_DATE_PATH.relative_to(PROJECT_ROOT))
+show("Parquet output", DIM_DATE_PATH.relative_to(PROJECT_ROOT).as_posix())

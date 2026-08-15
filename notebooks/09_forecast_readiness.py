@@ -606,8 +606,8 @@ def main() -> None:
     print(readiness[[*RISK_FLAG_COLUMNS, "is_ready"]].sum().to_string())
     print("\nRisk flag count:")
     print(readiness["risk_flag_count"].value_counts().sort_index().to_string())
-    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Report: {REPORT_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Report: {REPORT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

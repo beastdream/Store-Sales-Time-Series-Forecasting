@@ -5,8 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from src.features.lag_features import DEFAULT_LAGS, add_sales_lag_features
-from src.features.rolling_features import add_sales_rolling_features
+from src.features.lag_features import DEFAULT_LAGS
 from src.modeling.predict import predict_sales
 
 
@@ -73,17 +72,55 @@ def recursive_forecast(
     working = known_frame.copy()
     working["date"] = pd.to_datetime(working["date"]).dt.normalize()
     working.loc[working["date"].gt(origin), "sales"] = np.nan
-    context_days = max(max(DEFAULT_LAGS), 56)
+    series_index = pd.MultiIndex.from_frame(
+        working[["store_nbr", "family"]].drop_duplicates().sort_values(
+            ["store_nbr", "family"], kind="stable"
+        )
+    )
+    sales_matrix = working.pivot(
+        index="date", columns=["store_nbr", "family"], values="sales"
+    ).reindex(columns=series_index)
     predictions: list[pd.DataFrame] = []
 
     for forecast_date in dates:
-        context_start = forecast_date - pd.Timedelta(days=context_days)
-        context = working.loc[
-            working["date"].between(context_start, forecast_date)
-        ].copy()
-        featured = add_sales_lag_features(context)
-        featured = add_sales_rolling_features(featured)
-        day_features = featured.loc[featured["date"].eq(forecast_date)].copy()
+        day_features = working.loc[working["date"].eq(forecast_date)].copy()
+        day_features = day_features.set_index(["store_nbr", "family"]).reindex(
+            series_index
+        )
+        for lag in DEFAULT_LAGS:
+            reference_date = forecast_date - pd.Timedelta(days=lag)
+            day_features[f"sales_lag_{lag}"] = sales_matrix.reindex(
+                [reference_date]
+            ).iloc[0].to_numpy()
+
+        def window_values(window: int) -> pd.DataFrame:
+            window_end = forecast_date - pd.Timedelta(days=1)
+            window_start = forecast_date - pd.Timedelta(days=window)
+            expected_window = pd.date_range(window_start, window_end)
+            return sales_matrix.reindex(expected_window)
+
+        for window in (7, 14, 28, 56):
+            day_features[f"rolling_mean_{window}"] = window_values(window).mean(
+                axis=0, skipna=False
+            ).to_numpy()
+        for window in (7, 28):
+            day_features[f"rolling_median_{window}"] = window_values(window).median(
+                axis=0, skipna=False
+            ).to_numpy()
+        window_28 = window_values(28)
+        day_features["rolling_std_28"] = window_28.std(
+            axis=0, skipna=False
+        ).to_numpy()
+        day_features["rolling_min_28"] = window_28.min(
+            axis=0, skipna=False
+        ).to_numpy()
+        day_features["rolling_max_28"] = window_28.max(
+            axis=0, skipna=False
+        ).to_numpy()
+        day_features["rolling_zero_rate_28"] = window_28.eq(0).where(
+            window_28.notna()
+        ).mean(axis=0, skipna=False).to_numpy()
+        day_features = day_features.reset_index()
         expected_count = working.loc[
             working["date"].eq(forecast_date), ["store_nbr", "family"]
         ].shape[0]
@@ -113,14 +150,10 @@ def recursive_forecast(
         if not np.isfinite(values).all() or (values < 0).any():
             raise RuntimeError("recursive predictions must be finite and nonnegative")
 
-        day_index = working["date"].eq(forecast_date)
-        update = working.loc[day_index, GRAIN].merge(
-            aligned,
-            on=GRAIN,
-            how="left",
-            validate="one_to_one",
-        )
-        working.loc[day_index, "sales"] = update["prediction"].to_numpy()
+        indexed_prediction = aligned.set_index(["store_nbr", "family"])[
+            "prediction"
+        ].reindex(series_index)
+        sales_matrix.loc[forecast_date] = indexed_prediction.to_numpy()
         predictions.append(aligned)
 
     result = pd.concat(predictions, ignore_index=True)

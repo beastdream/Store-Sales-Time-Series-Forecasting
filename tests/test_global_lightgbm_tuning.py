@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.modeling.predict import load_model
-from src.modeling.train_global import DEFAULT_NUM_BOOST_ROUND, FEATURE_COLUMNS
+from src.modeling.ablation import M6_NO_HOLIDAY_FEATURES
+from src.modeling.train_global import DEFAULT_NUM_BOOST_ROUND
 from src.modeling.tuning import (
     MINIMUM_RMSLE_IMPROVEMENT,
     SEARCH_CONFIGS,
@@ -75,7 +76,8 @@ def test_runner_does_not_load_test_or_select_single_fold() -> None:
     assert "selection_uses_single_best_fold" in source
     assert "num_boost_round=DEFAULT_NUM_BOOST_ROUND" in source
     assert DEFAULT_NUM_BOOST_ROUND == 250
-    assert "feature_columns=FEATURE_COLUMNS" in source
+    assert "feature_columns=M6_NO_HOLIDAY_FEATURES" in source
+    assert "load_test" not in source
 
 
 def test_completed_tuning_artifacts_record_all_experiments_and_selection() -> None:
@@ -92,7 +94,11 @@ def test_completed_tuning_artifacts_record_all_experiments_and_selection() -> No
     assert results[["rmsle_mean", "rmsle_std", "mae_mean", "wape_mean"]].notna().all().all()
     assert all(column in results for column in TUNABLE_PARAMETERS)
     assert config["chosen_experiment"] == chosen_result(results)["experiment"]
-    assert config["feature_list"] == FEATURE_COLUMNS
+    assert config["feature_set_name"] == "M6_NO_HOLIDAY"
+    assert config["feature_list"] == M6_NO_HOLIDAY_FEATURES
+    assert not {"holiday_count", "is_holiday", "is_work_day", "is_event"} & set(
+        config["feature_list"]
+    )
     assert config["num_boost_round"] == DEFAULT_NUM_BOOST_ROUND
     assert config["final_test_used_for_selection"] is False
     assert config["selection_uses_single_best_fold"] is False
@@ -104,6 +110,10 @@ def test_completed_tuning_artifacts_record_all_experiments_and_selection() -> No
         parse_dates=["train_end", "validation_start", "validation_end"],
     )
     assert len(fold_scores) == len(SEARCH_CONFIGS) * 4
+    assert fold_scores["feature_set"].eq("M6_NO_HOLIDAY").all()
+    assert fold_scores["inference_strategy"].eq(
+        "recursive_untuned_or_tuned"
+    ).all()
     boundaries = fold_scores.groupby("experiment")[
         ["train_end", "validation_start", "validation_end"]
     ].apply(lambda frame: tuple(map(tuple, frame.sort_values("validation_start").to_numpy())))
@@ -115,7 +125,18 @@ def test_completed_tuning_artifacts_record_all_experiments_and_selection() -> No
     )
 
     chosen = chosen_result(results)
-    assert chosen["rmsle_improvement_vs_untuned"] >= MINIMUM_RMSLE_IMPROVEMENT
-    tuned_model = PROJECT_ROOT / config["model_artifact"]
-    assert tuned_model.is_file() and tuned_model.stat().st_size > 0
-    assert load_model(tuned_model).num_trees() == DEFAULT_NUM_BOOST_ROUND
+    if chosen["experiment"] != "T0_untuned":
+        assert chosen["rmsle_improvement_vs_untuned"] >= MINIMUM_RMSLE_IMPROVEMENT
+        tuned_model = PROJECT_ROOT / config["model_artifact"]
+        assert tuned_model.is_file() and tuned_model.stat().st_size > 0
+        assert load_model(tuned_model).num_trees() == DEFAULT_NUM_BOOST_ROUND
+    else:
+        assert config["model_artifact"] is None
+    assert config["strongest_baseline"]["model"] == (
+        "rolling_historical_median_28d"
+    )
+    report = (
+        PROJECT_ROOT / "reports" / "modeling" / "tuning_summary.md"
+    ).read_text(encoding="utf-8")
+    assert "final competition test is not loaded" in report
+    assert config["chosen_experiment"] in report

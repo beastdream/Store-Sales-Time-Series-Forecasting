@@ -562,9 +562,9 @@ def main() -> None:
     print(f"Rows: {len(basic)}")
     print(f"Small-cohort warnings: {basic['small_sample_warning'].ne('').sum()}")
     print(f"Undefined promotion uplift proxy: {basic['uplift_proxy_pct'].isna().sum()}")
-    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Matched table: {MATCHED_OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Matched table: {MATCHED_OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

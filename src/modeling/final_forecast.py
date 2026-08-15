@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 
+from src.modeling.ablation import M6_NO_HOLIDAY_FEATURES
 from src.modeling.recursive import recursive_forecast
 from src.modeling.train_global import (
     add_known_features,
@@ -141,8 +142,10 @@ def train_and_predict_final(
     """Retrain the validation-selected strategy and return a validated submission."""
     if pd.to_datetime(train["date"]).max().normalize() != FINAL_TRAINING_CUTOFF:
         raise ValueError("historical training data must end on 2017-08-15")
-    if chosen_config.get("chosen_experiment") != "T2_moderate_capacity":
-        raise ValueError("final forecast requires the validation-chosen T2 configuration")
+    if chosen_config.get("feature_set_name") != "M6_NO_HOLIDAY":
+        raise ValueError("final forecast requires the ablation-selected feature set")
+    if chosen_config.get("feature_list") != M6_NO_HOLIDAY_FEATURES:
+        raise ValueError("chosen configuration feature list differs from M6_NO_HOLIDAY")
     if chosen_config.get("final_test_used_for_selection") is not False:
         raise ValueError("chosen configuration must confirm final test was not used")
     validate_final_test_contract(test, train)

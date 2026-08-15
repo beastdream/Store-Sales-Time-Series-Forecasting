@@ -76,7 +76,67 @@ def build_causal_training_features(frame: pd.DataFrame) -> pd.DataFrame:
     Missing calendar observations remain null rows. They preserve calendar
     alignment but are excluded as targets by train_global_model.
     """
-    return add_sales_rolling_features(add_sales_lag_features(frame))
+    required = ["date", "store_nbr", "family", "sales"]
+    missing = [column for column in required if column not in frame]
+    if missing:
+        raise KeyError("frame is missing required columns: " + ", ".join(missing))
+    if frame.duplicated(["date", "store_nbr", "family"]).any():
+        raise ValueError("frame must have a unique date-store-family grain")
+
+    dates = pd.DatetimeIndex(pd.to_datetime(frame["date"])).normalize()
+    series_index = pd.MultiIndex.from_frame(
+        frame[["store_nbr", "family"]].drop_duplicates().sort_values(
+            ["store_nbr", "family"], kind="stable"
+        )
+    )
+    expected_dates = pd.date_range(dates.min(), dates.max())
+    counts = pd.Series(dates).value_counts()
+    sorted_grain = frame[["date", "store_nbr", "family"]].sort_values(
+        ["date", "store_nbr", "family"], kind="stable"
+    )
+    if (
+        not dates.unique().sort_values().equals(expected_dates)
+        or not counts.eq(len(series_index)).all()
+        or not frame[["date", "store_nbr", "family"]].reset_index(drop=True).equals(
+            sorted_grain.reset_index(drop=True)
+        )
+    ):
+        raise ValueError(
+            "frame must be sorted and calendar-dense by date-store-family"
+        )
+
+    sales_matrix = frame.assign(date=dates).pivot(
+        index="date", columns=["store_nbr", "family"], values="sales"
+    ).reindex(columns=series_index)
+    result = frame.copy(deep=False)
+
+    def assign_matrix(column: str, values: pd.DataFrame) -> None:
+        result[column] = values.to_numpy().reshape(-1).astype("float32")
+
+    for lag in DEFAULT_LAGS:
+        assign_matrix(f"sales_lag_{lag}", sales_matrix.shift(lag))
+
+    shifted = sales_matrix.shift(1)
+    for window in (7, 14, 28, 56):
+        assign_matrix(
+            f"rolling_mean_{window}",
+            shifted.rolling(window=window, min_periods=window).mean(),
+        )
+    for window in (7, 28):
+        assign_matrix(
+            f"rolling_median_{window}",
+            shifted.rolling(window=window, min_periods=window).median(),
+        )
+    rolling_28 = shifted.rolling(window=28, min_periods=28)
+    assign_matrix("rolling_std_28", rolling_28.std())
+    assign_matrix("rolling_min_28", rolling_28.min())
+    assign_matrix("rolling_max_28", rolling_28.max())
+    shifted_zero = shifted.eq(0).where(shifted.notna())
+    assign_matrix(
+        "rolling_zero_rate_28",
+        shifted_zero.rolling(window=28, min_periods=28).mean(),
+    )
+    return result
 
 
 def build_horizon_safe_features(

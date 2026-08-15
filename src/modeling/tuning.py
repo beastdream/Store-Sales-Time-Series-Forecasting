@@ -63,6 +63,8 @@ SEARCH_CONFIGS: OrderedDict[str, dict[str, object]] = OrderedDict(
     ]
 )
 MINIMUM_RMSLE_IMPROVEMENT = 0.001
+MAXIMUM_RMSLE_STD_DEGRADATION = 0.002
+NEAR_TIE_RMSLE = 0.0005
 
 
 def resolved_parameters(overrides: dict[str, object]) -> dict[str, object]:
@@ -97,6 +99,10 @@ def summarize_tuning(fold_scores: pd.DataFrame) -> pd.DataFrame:
             "rmsle_std": experiment_scores["rmsle"].std(),
             "mae_mean": experiment_scores["mae"].mean(),
             "wape_mean": experiment_scores["wape"].mean(),
+            "parameter_change_count": sum(
+                parameters[name] != resolved_parameters({})[name]
+                for name in TUNABLE_PARAMETERS
+            ),
         }
         for fold in range(1, 5):
             score = experiment_scores.loc[experiment_scores["fold"].eq(fold)].iloc[0]
@@ -107,15 +113,28 @@ def summarize_tuning(fold_scores: pd.DataFrame) -> pd.DataFrame:
     control_rmsle = float(
         results.loc[results["experiment"].eq("T0_untuned"), "rmsle_mean"].iloc[0]
     )
+    control_std = float(
+        results.loc[results["experiment"].eq("T0_untuned"), "rmsle_std"].iloc[0]
+    )
     results["rmsle_improvement_vs_untuned"] = control_rmsle - results["rmsle_mean"]
     results["eligible_for_selection"] = (
         ~results["is_untuned_control"]
         & results["rmsle_improvement_vs_untuned"].ge(MINIMUM_RMSLE_IMPROVEMENT)
+        & results["rmsle_std"].le(
+            control_std + MAXIMUM_RMSLE_STD_DEGRADATION
+        )
     )
-    best_eligible = results.loc[results["eligible_for_selection"]].sort_values(
-        ["rmsle_mean", "rmsle_std"], kind="stable"
-    )
-    chosen = "T0_untuned" if best_eligible.empty else str(best_eligible.iloc[0]["experiment"])
+    eligible = results.loc[results["eligible_for_selection"]]
+    if eligible.empty:
+        chosen = "T0_untuned"
+    else:
+        best_mean = float(eligible["rmsle_mean"].min())
+        near_best = eligible.loc[
+            eligible["rmsle_mean"].le(best_mean + NEAR_TIE_RMSLE)
+        ].sort_values(
+            ["rmsle_std", "parameter_change_count", "rmsle_mean"], kind="stable"
+        )
+        chosen = str(near_best.iloc[0]["experiment"])
     results["is_chosen"] = results["experiment"].eq(chosen)
     return results
 

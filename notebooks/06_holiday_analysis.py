@@ -492,8 +492,8 @@ def main() -> None:
     print(f"Rows: {len(frame):,}")
     print(f"Mapped special store-days: {frame['has_holiday_mapping'].sum():,}")
     print(f"Multiple-event store-days: {frame['holiday_count'].gt(1).sum():,}")
-    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT)}")
+    print(f"Table: {OUTPUT_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Figures: {FIGURE_DIR.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

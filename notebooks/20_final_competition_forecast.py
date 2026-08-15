@@ -1,7 +1,7 @@
 # %% [markdown]
 # # Final Competition Forecast
 #
-# This entrypoint retrains only the validation-selected T2 global LightGBM on all
+# This entrypoint retrains only the validation-selected global LightGBM on all
 # actual sales through 2017-08-15. The final horizon is generated recursively,
 # feeding prior predictions into later calendar-day lag/rolling features. Final test covariates are used only for the
 # 2017-08-16 through 2017-08-31 forecast, never for model/parameter selection.
@@ -39,6 +39,7 @@ CONFIG_PATH = MODELS_DIR / "global_lightgbm_chosen_config.json"
 MODEL_PATH = MODELS_DIR / "final_global_lightgbm.txt"
 METADATA_PATH = MODELS_DIR / "final_global_lightgbm_metadata.json"
 SUBMISSION_PATH = REPORTS_DIR / "modeling" / "final_submission.csv"
+REPORT_PATH = REPORTS_DIR / "modeling" / "final_forecast_report.md"
 
 
 def _publish_temp_file(source: Path, destination: Path) -> None:
@@ -74,7 +75,10 @@ def main() -> None:
         {
             "artifact_role": "final_competition_forecast_model",
             "model_type": "global LightGBM regression",
+            "model_artifact": MODEL_PATH.relative_to(PROJECT_ROOT).as_posix(),
             "chosen_experiment": chosen_config["chosen_experiment"],
+            "feature_set_name": chosen_config["feature_set_name"],
+            "selected_parameters": chosen_config["parameters"],
             "selection_objective": chosen_config["selection_objective"],
             "training_cutoff": FINAL_TRAINING_CUTOFF.date().isoformat(),
             "training_start": pd.to_datetime(train["date"]).min().date().isoformat(),
@@ -85,13 +89,16 @@ def main() -> None:
             "validation_metrics": {
                 "mean_rmsle": chosen_config["chosen_mean_rmsle"],
                 "rmsle_std": chosen_config["chosen_rmsle_std"],
+                "mean_mae": chosen_config["chosen_mae_mean"],
+                "mean_wape": chosen_config["chosen_wape_mean"],
                 "rmsle_improvement_vs_untuned": chosen_config[
                     "rmsle_improvement_vs_untuned"
                 ],
                 "temporal_folds": chosen_config["temporal_folds"],
             },
+            "baseline_comparison": chosen_config["strongest_baseline"],
             "submission": {
-                "path": str(SUBMISSION_PATH.relative_to(PROJECT_ROOT)),
+                "path": SUBMISSION_PATH.relative_to(PROJECT_ROOT).as_posix(),
                 "row_count": len(submission),
                 "id_order_preserved": True,
                 "minimum_prediction": float(submission["sales"].min()),
@@ -102,7 +109,9 @@ def main() -> None:
                 "prediction_inverse_transform"
             ],
             "final_test_used_for_model_selection": False,
-            "hyperparameter_tuning": True,
+            "hyperparameter_tuning": (
+                chosen_config["chosen_experiment"] != "T0_untuned"
+            ),
             "parameter_selection": "four-fold temporal validation",
             "test_id_sha256": hashlib.sha256(
                 test["id"].to_numpy().tobytes()
@@ -134,10 +143,37 @@ def main() -> None:
     _publish_temp_file(temporary_submission, SUBMISSION_PATH)
     _publish_temp_file(temporary_metadata, METADATA_PATH)
 
+    fold_4 = chosen_config["temporal_folds"][-1]
+    baseline = chosen_config["strongest_baseline"]
+    report_lines = [
+        "# Final Recursive Forecast",
+        "",
+        f"- Selected configuration: **{chosen_config['chosen_experiment']}**.",
+        f"- Feature set: **{chosen_config['feature_set_name']}** "
+        f"({len(chosen_config['feature_list'])} features).",
+        f"- Untuned mean RMSLE: **{chosen_config['untuned_mean_rmsle']:.6f}**.",
+        f"- Selected mean RMSLE: **{chosen_config['chosen_mean_rmsle']:.6f}**; "
+        f"std: **{chosen_config['chosen_rmsle_std']:.6f}**.",
+        f"- Mean MAE: **{chosen_config['chosen_mae_mean']:.6f}**; "
+        f"mean WAPE: **{chosen_config['chosen_wape_mean']:.6f}**.",
+        f"- Fold 4 RMSLE: **{fold_4['rmsle']:.6f}**; MAE: "
+        f"**{fold_4['mae']:.6f}**; WAPE: **{fold_4['wape']:.6f}**.",
+        f"- Strongest baseline: **{baseline['model']}**, mean RMSLE "
+        f"**{baseline['mean_rmsle']:.6f}**.",
+        "- Inference: recursive calendar-day forecasting; no final-test target "
+        "was used for feature or parameter selection.",
+        f"- Submission: **{len(submission):,} rows**, exact original test ID order, "
+        "unique IDs, finite and nonnegative predictions.",
+        f"- Model artifact: `{MODEL_PATH.relative_to(PROJECT_ROOT).as_posix()}`.",
+        f"- Metadata: `{METADATA_PATH.relative_to(PROJECT_ROOT).as_posix()}`.",
+        "",
+    ]
+    REPORT_PATH.write_text("\n".join(report_lines), encoding="utf-8")
+
     print(f"Final submission rows: {len(submission):,}")
     print(f"Forecast dates: {FINAL_FORECAST_START.date()}..{FINAL_FORECAST_END.date()}")
-    print(f"Submission: {SUBMISSION_PATH.relative_to(PROJECT_ROOT)}")
-    print(f"Model: {MODEL_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"Submission: {SUBMISSION_PATH.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Model: {MODEL_PATH.relative_to(PROJECT_ROOT).as_posix()}")
 
 
 if __name__ == "__main__":

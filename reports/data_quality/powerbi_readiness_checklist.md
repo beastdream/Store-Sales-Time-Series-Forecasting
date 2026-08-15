@@ -72,20 +72,11 @@ không notebook DA downstream nào bị bỏ qua.
 | Raw hash không đổi trong regression | PASS | 7 raw CSV có SHA-256 giống nhau trước/sau validator |
 | Baseline SHA-256 cố định | WARNING | Chưa có `raw_sha256.json`/`SHA256SUMS`; tạo baseline có review nếu muốn đối chiếu giữa máy/lần clone |
 | Ignore rules | PASS | Raw CSV, ba large report CSV và generated Parquet đã được ignore; `.gitkeep` được giữ |
-| Unwanted artifacts còn trong Git index | WARNING | 6 raw CSV và 3 large report CSV vẫn tracked; cần người dùng tự chạy `git rm --cached` trước commit |
+| Unwanted artifacts còn trong Git index | PASS | 6 raw CSV và 3 large report CSV đã được untrack bằng `git rm --cached`; toàn bộ file local vẫn được giữ |
 | Secrets và absolute paths | PASS | Không phát hiện secret thật, `.env`, hoặc absolute personal path trong tracked text files |
 
-Các lệnh untrack giữ nguyên file local:
-
-```powershell
-git rm --cached data/raw/*.csv
-git rm --cached reports/tables/holiday_analysis.csv
-git rm --cached reports/tables/promotion_analysis_matched.csv
-git rm --cached reports/tables/transactions_analysis.csv
-git status --short
-```
-
-Không lệnh nào ở trên được tự động chạy trong regression này.
+Git-index cleanup đã hoàn tất mà không xóa file local. Không có history rewrite
+hoặc commit tự động.
 
 ## Tables recommended for Power BI import
 

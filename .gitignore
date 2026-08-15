@@ -11,6 +11,11 @@ data/processed/*
 data/features/*
 models/*
 
+# Keep the canonical selected/final model contract for portfolio reproducibility.
+!models/global_lightgbm_chosen_config.json
+!models/final_global_lightgbm.txt
+!models/final_global_lightgbm_metadata.json
+
 !**/.gitkeep
 
 data/raw/*.csv

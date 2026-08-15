@@ -1,49 +1,34 @@
-# Git Hygiene Report
+# Git Hygiene and Portability Report
 
-Ngày kiểm tra: 2026-08-06
+Audit date: 2026-08-15
 
-## Files ignored
+## Policy
 
-`.gitignore` hiện bỏ qua:
+- `.gitattributes` normalizes repository text to LF on Windows and Linux.
+- PBIX, Parquet, PNG, JPG, and JPEG files are explicitly binary and are never
+  line-ending normalized.
+- Local competition CSVs remain under `data/raw/` but are excluded from Git.
+- Generated `data/interim/`, `data/processed/`, and `data/features/` artifacts
+  remain excluded, with `.gitkeep` placeholders retained.
+- Experimental model outputs remain ignored. The selected configuration, final
+  model, and final metadata are explicit exceptions because project validation
+  and portfolio reproducibility depend on them.
 
-- Môi trường và cache: `.venv/`, `venv/`, `.env`, `__pycache__`, `*.pyc`,
-  `.ipynb_checkpoints/`, `.pytest_cache/`.
-- Artifacts dữ liệu tái tạo được: `data/interim/*`, `data/processed/*`,
-  `data/features/*`, `models/*`.
-- Toàn bộ raw CSV: `data/raw/*.csv`.
-- Ba report CSV lớn có thể tái tạo:
-  `reports/tables/holiday_analysis.csv`,
-  `reports/tables/promotion_analysis_matched.csv`, và
-  `reports/tables/transactions_analysis.csv`.
-- Rule `!**/.gitkeep` tiếp tục giữ các placeholder directory.
+## Artifact classification and decision
 
-Các file đã tracked vẫn xuất hiện trong Git cho đến khi người dùng chủ động bỏ
-theo dõi; thêm rule ignore không tự xóa file local hoặc thay đổi Git index.
+| Class | Files | Decision |
+|---|---|---|
+| Source data | Seven competition CSVs under `data/raw/` | Keep locally; do not track. `train.csv` was already untracked, and the other six were removed from the index with `git rm --cached`. |
+| Reproducible generated tables | `holiday_analysis.csv`, `promotion_analysis_matched.csv`, `transactions_analysis.csv` | Keep locally; remove from index. Together they occupy about 66 MiB. |
+| Regression/model evidence | Four modeling Parquet files, final submission, score tables, reports, and figures | Keep tracked because repository tests and documented analysis consume these persisted artifacts. |
+| Canonical model contract | `global_lightgbm_chosen_config.json`, `final_global_lightgbm.txt`, `final_global_lightgbm_metadata.json` | Keep and track; combined size is about 1.13 MiB. |
+| Irreplaceable portfolio artifact | `powerbi/store_sales_analytics.pbix` | Keep tracked as binary; do not modify or normalize. |
+| Reproducible warehouse data | Parquet under `data/interim/`, `data/processed/`, and `data/features/` | Keep locally and ignored; no generated Parquet in these directories is tracked. |
 
-Các tài liệu sau đã được kiểm tra và **không bị ignore**:
+## Files removed from the Git index
 
-- `reports/business_insights.md`
-- `reports/da_project_validation.md`
-- `reports/forecast_readiness.md`
-- Nội dung trong `reports/data_quality/`
-
-## Large tracked files
-
-Ngưỡng liệt kê: ít nhất 1 MiB theo kích thước working tree.
-
-| File | Kích thước | Đánh giá |
-|---|---:|---|
-| `reports/tables/holiday_analysis.csv` | 25,80 MiB | CSV tái tạo được; đã thêm ignore rule |
-| `reports/tables/promotion_analysis_matched.csv` | 23,36 MiB | CSV tái tạo được; đã thêm ignore rule |
-| `reports/tables/transactions_analysis.csv` | 17,64 MiB | CSV tái tạo được; đã thêm ignore rule |
-| `data/raw/transactions.csv` | 1,48 MiB | Raw data; đã được rule `data/raw/*.csv` bao phủ |
-| `reports/figures/transactions_analysis/unusual_transaction_days.png` | 1,06 MiB | Figure đang tracked; không thuộc danh sách yêu cầu bỏ theo dõi |
-
-Không file nào trong bảng trên bị xóa hoặc bị bỏ theo dõi tự động.
-
-## Raw files tracked
-
-Các raw CSV sau vẫn đang có trong Git index:
+The following files were untracked with `git rm --cached`; no local file was
+deleted:
 
 - `data/raw/holidays_events.csv`
 - `data/raw/oil.csv`
@@ -51,44 +36,32 @@ Các raw CSV sau vẫn đang có trong Git index:
 - `data/raw/stores.csv`
 - `data/raw/test.csv`
 - `data/raw/transactions.csv`
+- `reports/tables/holiday_analysis.csv`
+- `reports/tables/promotion_analysis_matched.csv`
+- `reports/tables/transactions_analysis.csv`
 
-`data/raw/train.csv` không nằm trong Git index và được ignore. File
-`data/raw/.gitkeep` vẫn được phép theo dõi.
+## Files deliberately kept in Git
 
-## Secrets scan result
+- `powerbi/store_sales_analytics.pbix` (49.57 MiB): final local dashboard.
+- `reports/modeling/global_lgbm_prediction_intervals.parquet` (3.44 MiB).
+- `reports/modeling/recursive_global_lgbm_oof_predictions.parquet` (1.42 MiB).
+- `reports/modeling/global_lgbm_tuned_oof_predictions.parquet` (1.41 MiB).
+- `reports/modeling/two_stage_intermittent_oof_predictions.parquet` (0.29 MiB).
+- `reports/modeling/final_submission.csv` and its validation evidence.
+- The selected/final model contract listed above.
 
-- Không tìm thấy `.env` trong working tree; `.env.example` là template đang tracked
-  và dùng placeholder `change_me`, không phải password thật.
-- Không tìm thấy `.venv/` hoặc `venv/` trong working tree.
-- Không tìm thấy private-key header, token phổ biến, access key, hoặc database URL
-  chứa username/password trong tracked files.
-- `src/database.py` chỉ tham chiếu `settings["DB_PASSWORD"]`; đây là tên biến cấu
-  hình, không phải password thật được hard-code.
+The modeling Parquet files are reproducible, but artifact tests read them
+directly. Removing them without redesigning the test/reproduction contract would
+make a fresh clone incomplete, so they remain tracked.
 
-Kết quả là clean theo các pattern đã kiểm tra. Đây là static pattern scan, không
-thay thế secret scanner chuyên dụng hoặc việc rotate credential nếu từng bị commit.
+## Remaining concerns
 
-## Absolute path scan result
+- The PBIX is approximately 49.57 MiB. It is intentionally retained, but it is
+  the largest remaining tracked file and may approach hosting limits if future
+  versions grow substantially.
+- Git history still contains previously committed raw/generated files. This task
+  changes only the current index and intentionally does not rewrite history.
+- Competition data must be placed under `data/raw/` after a fresh clone, as
+  documented in the README.
 
-Không tìm thấy đường dẫn tuyệt đối máy cá nhân theo các mẫu thư mục user/project
-phổ biến của Windows, Linux hoặc macOS trong tracked files.
-
-Không có generated Parquet nào đang được Git theo dõi. Rule
-`data/processed/*` và `data/features/*` tiếp tục bao phủ các Parquet được tạo lại,
-trong khi `.gitkeep` được giữ.
-
-## Commands người dùng cần tự chạy
-
-Các lệnh dưới đây chỉ bỏ file khỏi Git index; option `--cached` giữ nguyên file
-trong working tree. Hãy review bằng `git status` trước khi commit:
-
-```bash
-git rm --cached data/raw/*.csv
-git rm --cached reports/tables/holiday_analysis.csv
-git rm --cached reports/tables/promotion_analysis_matched.csv
-git rm --cached reports/tables/transactions_analysis.csv
-git status --short
-```
-
-Không cần chạy lệnh cho `data/raw/train.csv` vì file này không được theo dõi.
-Không có commit nào được tạo trong lần kiểm tra này.
+No commit or history rewrite was performed.

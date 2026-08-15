@@ -1,0 +1,9 @@
+# Normalize repository text to LF on every platform.
+* text=auto eol=lf
+
+# Binary analytical and report artifacts must never be line-ending normalized.
+*.pbix binary
+*.parquet binary
+*.png binary
+*.jpg binary
+*.jpeg binary

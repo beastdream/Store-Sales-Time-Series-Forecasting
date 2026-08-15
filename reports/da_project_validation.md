@@ -4,7 +4,7 @@
 
 ## Execution timestamp
 
-2026-08-15T20:00:21.412475+07:00
+2026-08-15T20:21:12.816555+07:00
 
 ## Environment
 
@@ -32,12 +32,12 @@
 - **Secret scan:** No real .env, private key, common token, or credential-bearing database URL found.
 - **Absolute personal path scan:** No absolute personal-machine path found in tracked text files.
 - **Git hygiene rules:** Required ignore rules exist; .gitkeep is retained; no generated DA Parquet is tracked.
+- **Ignored artifacts still tracked:** No ignored raw/report artifacts remain in the Git index.
 - **SQL quality dry-run:** `python -m src.run_sql_quality_checks --dry-run` returned exit code 0. Last output: SQL quality dry-run passed: 5 files, 5 statements
 
 ## Warnings
 
 - **Raw SHA-256 baseline:** No baseline hash file exists; pre/post hashes were still compared.
-- **Ignored artifacts still tracked:** Raw CSV tracked=6; large reproducible report CSV tracked=3. Run documented git rm --cached commands manually.
 
 ## Failed checks
 
@@ -78,9 +78,9 @@
 
 ## Git hygiene
 
-- Tracked files scanned: 264.
-- Raw CSV files still tracked: 6.
-- Large reproducible report CSV files still tracked: 3.
+- Tracked files scanned: 266.
+- Raw CSV files still tracked: 0.
+- Large reproducible report CSV files still tracked: 0.
 - Tracked generated DA Parquet files: 0.
 - Persisted DS evidence under reports/modeling is outside DA Git-hygiene scope.
 - No files were deleted, untracked, or committed by the validator.

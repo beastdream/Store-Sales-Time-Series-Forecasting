@@ -1,5 +1,7 @@
 # Tuned Global LightGBM OOF Error Analysis
 
+> **Historical artifact:** metrics in this report were generated with the previous fixed/frozen multi-step inference strategy. They remain useful as historical segmentation evidence, but they are not diagnostics for the current recursive M6_NO_HOLIDAY model. Current model-selection evidence is in `tuning_summary.md` and current final status is in `final_forecast_report.md`.
+
 ## Scope and leakage boundary
 
 These results use row-level predictions from four independently trained temporal folds. Each 16-day horizon is generated from one fixed origin. `ForecastReadiness` is joined only after prediction as a post-hoc label; none of its full-history statistics enters training.

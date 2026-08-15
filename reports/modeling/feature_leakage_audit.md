@@ -12,8 +12,10 @@ The corrected multi-step implementation uses one recursive state transition.
 Sales after the forecast origin are masked once. Each predicted day is appended
 to a private temporary history before the next day's calendar lags and shifted
 rolling statistics are recomputed. Actual validation/test targets are never
-appended. Persisted metrics and model artifacts predate this correction and remain
-legacy until the complete experiment chain is rerun.
+appended. Recursive base evaluation, ablation, controlled tuning, final training,
+and the final submission have since been regenerated. Error segmentation,
+specialist-routing, and prediction-interval artifacts remain historical until
+they are rerun under the recursive selected strategy.
 
 ## Feature decisions
 

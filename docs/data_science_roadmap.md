@@ -104,9 +104,12 @@ mean RMSLE is **0.004438**, above the predefined 0.001 threshold.
 Fold RMSLE is 0.392566, 0.385777, 0.400308, and 0.428048. This variation is
 reported explicitly; no single fold is used as the headline selection result.
 
-## 7. Error analysis and readiness segmentation — implemented
+## 7. Historical error analysis and readiness segmentation
 
-The persisted OOF artifact contains 114,048 predictions. Pooled metrics are RMSLE
+This stage was implemented against the deprecated fixed/frozen multi-step
+strategy and is retained as experiment history. It has not been regenerated for
+the selected recursive M6_NO_HOLIDAY model. The historical persisted OOF artifact
+contains 114,048 predictions. Pooled metrics are RMSLE
 **0.411671**, MAE **71.497549**, and WAPE **0.151310**. These pooled results are
 separate from the mean-fold selection metric.
 
@@ -116,21 +119,25 @@ Holiday rows are **0.478143** versus **0.409899** on regular rows. Detailed
 store, family, promotion, holiday, readiness, and overlapping-risk tables are in
 reports/modeling/error_analysis.md and scores_by_*.csv.
 
-## 8. Specialized models — evaluated, shadow only
+## 8. Historical specialized models — evaluated, shadow only
 
 Croston, SBA, TSB, and two-stage LightGBM were evaluated on 417 post-hoc
 intermittent-demand series. Two-stage LightGBM achieved mean RMSLE
 **0.541790 ± 0.058160**, compared with **0.549916 ± 0.073648** for the tuned
 global model on the same cohort. It improved only two of four folds.
 
-This result supports a controlled shadow experiment, not production routing.
+The comparison used the deprecated fixed/frozen global control and has not been
+rerun against the selected recursive model. It supports a controlled historical
+shadow experiment, not production routing.
 The cohort label is computed from full history; an origin-causal router has not
 been implemented. The final competition forecast therefore uses the global model
 for all series.
 
-## 9. Prediction intervals — evaluated prototype
+## 9. Historical prediction intervals — evaluated prototype
 
-An 80% split-conformal P10/P90 method on the log1p scale uses a separate prior
+This prototype was calibrated around predictions from the deprecated
+fixed/frozen strategy and has not been regenerated for the selected recursive
+model. An 80% split-conformal P10/P90 method on the log1p scale uses a separate prior
 16-day calibration window for each validation fold. P50 is unchanged.
 
 - Pooled empirical coverage: **79.8252%**.

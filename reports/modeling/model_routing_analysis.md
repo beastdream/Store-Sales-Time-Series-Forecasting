@@ -1,5 +1,7 @@
 # Intermittent-Demand Model Routing Analysis
 
+> **Historical artifact:** this shadow-routing experiment used the previous fixed/frozen global-model control. It is retained as experiment history and does not replace or describe the current recursive selected model. See `tuning_summary.md` and `final_forecast_report.md` for current status.
+
 ## Evaluation contract
 
 The evaluation cohort contains 417 series labeled `Intermittent demand`. ForecastReadiness is used only to select and score this post-hoc cohort; it is not a training feature. All strategies use the same four rolling 16-day folds. Croston, SBA and TSB use fixed alpha/beta 0.1; no smoothing tuning was performed. The two-stage model uses the already chosen LightGBM configuration without further tuning.

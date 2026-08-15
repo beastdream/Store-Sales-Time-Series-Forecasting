@@ -1,6 +1,6 @@
 # Forecast Readiness
 
-> Phạm vi của bước này chỉ là đánh giá dữ liệu. Chưa huấn luyện, chọn hoặc đánh giá model.
+> **Bối cảnh lịch sử:** report này ghi lại riêng giai đoạn Forecast Readiness; tại thời điểm đó model chưa được huấn luyện, chọn hoặc đánh giá. Trạng thái modeling hiện tại xem tại `docs/data_science_roadmap.md`, `reports/ds_project_validation.md` và `reports/modeling/`.
 
 ## Dữ liệu và grain
 
@@ -135,6 +135,6 @@ Store metrics lấy từ `store_performance.csv`; anomaly count lấy từ `sale
 - **High volatility:** prediction intervals cần rộng hơn; validation nhiều fold và robust loss có thể quan trọng hơn point accuracy đơn lẻ.
 - **Promotion dependent:** forecast cần promotion plan tương lai đáng tin cậy; kịch bản thiếu promotion feature phải được đánh giá riêng.
 
-## Bước tiếp theo
+## Bước tiếp theo tại thời điểm report được tạo
 
-Chưa có model nào được huấn luyện trong bước này. Bước sau mới nên xác định forecast horizon, temporal split, baseline và metric theo từng readiness group.
+Tại thời điểm phân tích readiness này, chưa có model nào được huấn luyện. Bước kế tiếp được đề xuất khi đó là xác định forecast horizon, temporal split, baseline và metric theo từng readiness group. Các bước này hiện đã được triển khai; xem trạng thái hiện hành tại `docs/data_science_roadmap.md`.

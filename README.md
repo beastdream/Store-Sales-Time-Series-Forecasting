@@ -109,10 +109,13 @@ See the [controlled tuning report](reports/modeling/tuning_summary.md).
 
 See [Feature Leakage Audit](reports/modeling/feature_leakage_audit.md).
 
-## Error analysis and readiness segmentation
+## Historical error analysis and readiness segmentation
 
-The tuned model's pooled OOF results are RMSLE **0.411671**, MAE **71.497549**, and
-WAPE **0.151310**. Readiness labels were joined only after predictions:
+The detailed segmentation artifacts below were generated with the deprecated
+fixed/frozen multi-step strategy. They are retained as historical diagnostic
+evidence and do not describe the current recursive M6_NO_HOLIDAY model. In that
+historical run, pooled OOF RMSLE was **0.411671**, MAE was **71.497549**, and WAPE
+was **0.151310**. Readiness labels were joined only after predictions:
 
 - Intermittent demand is the worst primary class by RMSLE: **0.553603** across
   417 series.
@@ -121,10 +124,11 @@ WAPE **0.151310**. Readiness labels were joined only after predictions:
 - Promotion-dependent series have low proportional error but high absolute error:
   RMSLE **0.233837**, MAE **233.014673**.
 
-These are predictive diagnostics, not causal conclusions. See
+These are historical predictive diagnostics, not causal conclusions. They have
+not yet been regenerated for the selected recursive model. See
 [Error Analysis](reports/modeling/error_analysis.md).
 
-## Specialized models and prediction intervals
+## Historical specialized-model and interval experiments
 
 Croston, SBA, TSB, and a two-stage LightGBM were evaluated on the 417-series
 post-hoc intermittent cohort. Two-stage LightGBM had the best cohort mean RMSLE,
@@ -133,11 +137,14 @@ control, but improved only 2 of 4 folds. It remains a shadow recommendation
 because the full-history readiness label is not an origin-causal production
 router. The final forecast therefore uses the global model for every series.
 
-An 80% split-conformal P10/P90 layer was also evaluated using separate prior
+These routing results used the same deprecated fixed/frozen global control. An
+80% split-conformal P10/P90 layer was also evaluated using separate prior
 calibration windows. Pooled empirical coverage was **79.8252%**, mean width
 **428.216**, and mean three-quantile pinball loss **28.023029**. Coverage was weak
 for intermittent demand (**64.13%**) and high volatility (**66.76%**), so the
-interval layer is an evaluated prototype, not part of the final point submission.
+interval layer is a historical evaluated prototype, not part of the final point
+submission. Neither experiment has been rerun against the selected recursive
+model.
 
 See [Routing Analysis](reports/modeling/model_routing_analysis.md) and
 [Prediction Intervals](reports/modeling/prediction_intervals.md).
@@ -191,6 +198,9 @@ python notebooks/19_prediction_intervals.py
 python notebooks/20_final_competition_forecast.py
 
 # Automated validation
+python -m src.validate_da_project
+python -m src.validate_ds_project
+python -m src.validate_project
 python -m pytest -q
 ~~~
 

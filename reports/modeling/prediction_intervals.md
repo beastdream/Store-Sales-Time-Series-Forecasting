@@ -1,5 +1,7 @@
 # Prediction Interval Evaluation
 
+> **Historical artifact:** these interval results were calibrated around point forecasts from the previous fixed/frozen strategy. They are retained as methodology evidence but have not been regenerated for the current recursive M6_NO_HOLIDAY model.
+
 ## Method and temporal contract
 
 P50 is the unchanged tuned LightGBM point forecast. P10/P90 use an 80% split-conformal interval on the log1p scale. For every validation fold, the calibration residuals come from a separate 16-day horizon ending before the validation horizon and forecast from an earlier origin. No current-fold target is used to calibrate its interval. The method is global and does not use readiness labels during calibration or prediction.

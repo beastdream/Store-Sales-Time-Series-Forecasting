@@ -1,5 +1,7 @@
 # Controlled Global LightGBM Feature Ablation
 
+> **Historical artifact:** this report preserves the deprecated fixed/frozen inference strategy. Current recursive ablation evidence is in `ablation_summary.md`.
+
 All M1-M6 experiments use the same four rolling 16-day folds, the same fixed LightGBM parameters, and 250 boosting rounds. No hyperparameter tuning or final test target is used.
 
 Effects use mean RMSLE relative to the immediately preceding experiment. Absolute changes below 0.001 are `negligible effect`.

@@ -47,8 +47,10 @@ def test_command_check_sanitizes_machine_paths() -> None:
 
 def test_absolute_path_scan_ignores_escape_sequences_but_detects_paths() -> None:
     assert not validator._contains_absolute_personal_path('"one segment:\\n\\n"')
-    assert validator._contains_absolute_personal_path("D:\\Project Folder\\reports\\x.md")
-    assert validator._contains_absolute_personal_path("/home/example/project/file.py")
+    windows_path = "D:" + chr(92) + "Project Folder" + chr(92) + "reports" + chr(92) + "x.md"
+    posix_path = "/" + "home/example/project/file.py"
+    assert validator._contains_absolute_personal_path(windows_path)
+    assert validator._contains_absolute_personal_path(posix_path)
 
 
 def test_postgres_runtime_is_not_run_without_configuration(monkeypatch) -> None:
@@ -93,7 +95,26 @@ def test_render_report_contains_every_required_section() -> None:
         "## Commands to reproduce",
     ]
     assert all(section in report for section in required)
+    assert "Forecast-model validation is owned by `src.validate_ds_project`" in report
+    assert "no model is approved" not in report
+    assert "Build and validate the actual Power BI" not in report
     assert outcome.exit_code == 1
+
+
+def test_power_bi_check_validates_local_artifact_only(monkeypatch, tmp_path) -> None:
+    pbix = tmp_path / "store_sales_analytics.pbix"
+    monkeypatch.setattr(validator, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(validator, "POWER_BI_PATH", pbix)
+
+    missing = validator.ValidationOutcome(timestamp=datetime.now(ZoneInfo("Asia/Bangkok")))
+    validator._check_power_bi_artifact(missing)
+    assert missing.results[-1].status == "FAIL"
+
+    pbix.write_bytes(b"pbix")
+    present = validator.ValidationOutcome(timestamp=datetime.now(ZoneInfo("Asia/Bangkok")))
+    validator._check_power_bi_artifact(present)
+    assert present.results[-1].status == "PASS"
+    assert "Service publication" in present.powerbi_readiness[-1]
 
 
 def test_main_writes_report_and_returns_nonzero_on_failure(monkeypatch, tmp_path) -> None:

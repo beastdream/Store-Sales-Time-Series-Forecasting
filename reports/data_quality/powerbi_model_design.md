@@ -27,7 +27,7 @@ filtering.
 | `DimFamily` | `dim_family.parquet` | One row per product family | `family_key` | None | Family slicers |
 | `DimStoreDate` | `dim_store_date.parquet` | One row per `date_key + store_key`, including non-holidays and dates without fact observations | `date_store_key`; alternate unique key `date_key + store_key` | `date_key → DimDate`; `store_key → DimStore` | Primary holiday/event slicer and conformed store-day filter |
 | `FactDailySales` | `fact_daily_sales.parquet` | One observed row per `date_key + store_key + family_key` | `sales_id`; business grain is also unique | `date_store_key → DimStoreDate`; `family_key → DimFamily`; `date_key` and `store_key` remain for audit/SQL | Sales measures |
-| `FactStoreTransactions` | `fact_store_transactions.parquet` | One observed row per `date_key + store_key` | Composite `date_key + store_key`; `date_store_key` is also unique at this grain | `date_store_key → DimStoreDate`; `date_key` and `store_key` remain for audit/SQL | Transaction measures |
+| `FactStoreTransactions` | `fact_store_transactions.parquet` | One observed row per `date_key + store_key` | Composite `date_key + store_key` | Local composite `(date_key, store_key) → DimStoreDate`; Power BI derives `date_store_key` after import as a semantic helper | Transaction measures |
 | `FactOilPrice` | `fact_oil_price.parquet` | One row per calendar date | `date_key` | `date_key → DimDate` | Daily oil measures |
 | `BridgeStoreHoliday` | `bridge_store_holiday.parquet` | One row per holiday/event `date_key + store_key`; non-event store-days are absent | Composite `date_key + store_key` | `date_key → DimDate`; `store_key → DimStore` in warehouse SQL | Audit/detail only; not the main slicer and not an active fact-filter path |
 
@@ -38,10 +38,13 @@ filtering.
 | `DimDate` | `DimStoreDate` | `date_key` | `1 → *` | Single: `DimDate → DimStoreDate` |
 | `DimStore` | `DimStoreDate` | `store_key` | `1 → *` | Single: `DimStore → DimStoreDate` |
 | `DimStoreDate` | `FactDailySales` | `date_store_key` | `1 → *` | Single: `DimStoreDate → FactDailySales` |
-| `DimStoreDate` | `FactStoreTransactions` | `date_store_key` | `1 → *` | Single: `DimStoreDate → FactStoreTransactions` |
+| `DimStoreDate` | `FactStoreTransactions` | semantic helper `date_store_key` | `1 → *` | Single: `DimStoreDate → FactStoreTransactions` |
 | `DimFamily` | `FactDailySales` | `family_key` | `1 → *` | Single: `DimFamily → FactDailySales` |
 | `DimDate` | `FactOilPrice` | `date_key` | `1 → *` | Single: `DimDate → FactOilPrice` |
 
+The local transaction fact contains only `date_key`, `store_key`, and
+`transactions`. Power BI derives `date_store_key = date_key * 100 + store_key`
+after import; this is a semantic-model helper, not a persisted warehouse column.
 Although the facts retain `date_key` and `store_key` for audit and SQL, Power BI
 must not add active direct relationships from `DimDate` or `DimStore` to the two
 store-day facts. Those relationships would duplicate the active path through
@@ -80,7 +83,8 @@ The current processed data validates this design:
 - `is_holiday = 0`: 87,200 store-days.
 - Holiday/event mappings with `holiday_count > 0`: 7,938 store-days; this count is
   larger than the holiday flag count because events and work days are retained too.
-- Orphan `date_store_key` values in both store-day facts: 0.
+- Orphan persisted sales `date_store_key` values: 0; transaction rows map to
+  `DimStoreDate` by the local composite `(date_key, store_key)` with 0 orphans.
 
 ## Missing observation is not zero sales
 

@@ -32,6 +32,21 @@ The processed `BridgeStoreHoliday` remains useful for audit/detail outside the
 primary semantic path. `DimStoreDate` is used for dashboard holiday filtering
 because it contains both holiday and regular store-days.
 
+## Local warehouse versus semantic helper keys
+
+The persisted local `fact_store_transactions.parquet` schema is exactly
+`date_key`, `store_key`, and `transactions`. Its warehouse relationship to
+`DimStoreDate` is the composite `(date_key, store_key)` relationship also defined
+by the PostgreSQL DDL.
+
+The documented Power BI semantic model uses a single-column `date_store_key`
+relationship for this fact. On `FactStoreTransactions`, that value is a
+semantic-model helper created after import with the same collision-free convention used by
+`DimStoreDate`: `date_key * 100 + store_key`. It is not a persisted Parquet or
+PostgreSQL column. `FactDailySales`, by contrast, already persists
+`date_store_key` locally. Repository validation confirms the PBIX artifact but
+does not independently extract its binary `DataModel` metadata.
+
 ## Important relationships
 
 All active relationships should use one-to-many cardinality and single-direction
@@ -42,7 +57,7 @@ filtering from dimensions to facts:
 | `DimDate` | `DimStoreDate` | `date_key` | `DimDate → DimStoreDate` |
 | `DimStore` | `DimStoreDate` | `store_key` | `DimStore → DimStoreDate` |
 | `DimStoreDate` | `FactDailySales` | `date_store_key` | `DimStoreDate → FactDailySales` |
-| `DimStoreDate` | `FactStoreTransactions` | `date_store_key` | `DimStoreDate → FactStoreTransactions` |
+| `DimStoreDate` | `FactStoreTransactions` | semantic helper `date_store_key` | `DimStoreDate → FactStoreTransactions` |
 | `DimFamily` | `FactDailySales` | `family_key` | `DimFamily → FactDailySales` |
 | `DimDate` | `FactOilPrice` | `date_key` | `DimDate → FactOilPrice` |
 

@@ -142,6 +142,11 @@ For the local warehouse, FactStoreTransactions contains date_key, store_key, and
 transactions. Its conformed DimStoreDate relationship is the composite
 (date_key, store_key), while FactDailySales retains date_store_key.
 
+Power BI can materialize `date_store_key = date_key * 100 + store_key` on
+`FactStoreTransactions` after import to implement a single-column semantic-model
+relationship to `DimStoreDate`. That helper belongs to the Power BI model only;
+it is not a persisted column in the local Parquet or PostgreSQL fact.
+
 ## Power BI boundary
 
 The PBIX contains Executive Overview, Sales Trend & Seasonality, Store

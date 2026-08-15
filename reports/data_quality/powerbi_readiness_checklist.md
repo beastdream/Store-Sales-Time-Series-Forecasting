@@ -53,7 +53,7 @@ không notebook DA downstream nào bị bỏ qua.
 | Không double-count transactions | PASS | Clean/fact cùng 83,488 rows; grain date–store unique; fact không có `family_key` |
 | Database module | PASS | `src.database` resolve tới `src/database.py` |
 | `dim_store_date` full grid | PASS | 92,016 rows = 1,704 dates × 54 stores |
-| `date_store_key` | PASS | Formula đúng, unique; mọi sales/transaction fact key đều map |
+| Store-date relationship keys | PASS | Sales `date_store_key` map đầy đủ; transaction fact map bằng composite `(date_key, store_key)` và không persist `date_store_key` |
 | Holiday slicer population | PASS | `is_holiday` chứa cả 0 và 1 |
 | Promotion metric naming | PASS | Contract tests xác nhận tên non-causal mới và legacy names không còn |
 | Sales-trend artifacts | PASS | Đủ 3 CSV và 5 PNG bắt buộc; artifacts đọc/giải mã được |
@@ -113,7 +113,9 @@ Không import raw CSV hoặc ba report CSV lớn tái tạo được vào semant
 - `DimDate 1 → * DimStoreDate` bằng `date_key`, single direction.
 - `DimStore 1 → * DimStoreDate` bằng `store_key`, single direction.
 - `DimStoreDate 1 → * FactDailySales` bằng `date_store_key`, single direction.
-- `DimStoreDate 1 → * FactStoreTransactions` bằng `date_store_key`, single direction.
+- `DimStoreDate 1 → * FactStoreTransactions` bằng semantic helper
+  `date_store_key = date_key * 100 + store_key`, single direction. Helper này được
+  tạo sau import và không phải cột trong local Parquet/PostgreSQL fact.
 - `DimFamily 1 → * FactDailySales` bằng `family_key`, single direction.
 - `DimDate 1 → * FactOilPrice` bằng `date_key`, single direction.
 - Không tạo active direct path thứ hai từ `DimDate`/`DimStore` tới store-day facts.

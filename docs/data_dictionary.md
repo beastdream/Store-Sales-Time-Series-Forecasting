@@ -115,18 +115,19 @@ only the pandas dtype. All surrogate keys must map to their dimensions.
 
 - **Source:** `data/processed/fact_store_transactions.parquet`
 - **Grain:** one observed row per `date_key + store_key`.
-- **Primary key:** composite `date_key + store_key`; `date_store_key` is unique at
-  this grain.
+- **Primary key:** composite `date_key + store_key`.
 - **Foreign keys:** `date_key → dim_date`; `store_key → dim_store`;
-  `date_store_key → dim_store_date`.
+  composite `(date_key, store_key) → dim_store_date(date_key, store_key)`.
 - **Important caveats:** transactions are store-day measures and must not be joined
   directly to family-grain sales in a way that repeats them for every family.
+  The local Parquet and PostgreSQL table do **not** persist `date_store_key`.
+  Power BI may derive that value after import as a semantic-model relationship
+  helper; such a helper is not part of this warehouse table contract.
 
 | Column | Type | Meaning | Nullable |
 |---|---|---|---|
 | `date_key` | int32 / INTEGER | Date FK | No |
 | `store_key` | int32 / INTEGER | Store FK | No |
-| `date_store_key` | int64 / BIGINT | Conformed store-date FK | No |
 | `transactions` | uint32 / INTEGER | Observed store transaction count | No |
 
 ## `fact_oil_price`

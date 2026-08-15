@@ -51,7 +51,8 @@ SELECT 'fact_store_transactions_orphan_store_date', 'FAIL', COUNT(*)::TEXT, '0',
 FROM analytics.fact_store_transactions AS fact
 WHERE NOT EXISTS (
     SELECT 1 FROM analytics.dim_store_date AS dim
-    WHERE dim.date_store_key = fact.date_store_key
+    WHERE dim.date_key = fact.date_key
+      AND dim.store_key = fact.store_key
 )
 UNION ALL
 SELECT 'dim_store_date_orphan_date', 'FAIL', COUNT(*)::TEXT, '0', COUNT(*) = 0,

@@ -30,3 +30,16 @@ def test_postgres_load_order_places_date_store_dimension_before_facts() -> None:
 
     assert dimension_index < TABLE_LOAD_ORDER.index("fact_daily_sales")
     assert dimension_index < TABLE_LOAD_ORDER.index("fact_store_transactions")
+
+
+def test_transaction_store_date_quality_check_uses_composite_key() -> None:
+    quality_sql = (
+        PROJECT_ROOT / "sql" / "data_quality" / "03_foreign_keys.sql"
+    ).read_text(encoding="utf-8").lower()
+    transaction_check = quality_sql.split(
+        "select 'fact_store_transactions_orphan_store_date'", 1
+    )[1].split("union all", 1)[0]
+
+    assert "dim.date_key = fact.date_key" in transaction_check
+    assert "dim.store_key = fact.store_key" in transaction_check
+    assert "fact.date_store_key" not in transaction_check
